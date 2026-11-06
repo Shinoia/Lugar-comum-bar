@@ -349,7 +349,9 @@
                         alert("Dia finalizado! Total de vendas: " + (r.totalTexto || '') + "\nAs mesas voltaram ao início (Mesa 1, Mesa 2, ...).");
                         sincronizar();
                     } else {
-                        alert((r && r.error) ? r.error : "Não foi possível finalizar o dia.");
+                        if (r && r.error) alert(r.error);
+                        else if (r && r.pedidos) alert("O Apps Script ainda está na versão antiga. Implante a nova versão do Codigo.gs (Implantar > Gerenciar implantações > Editar > Nova versão).");
+                        else alert("Não foi possível finalizar o dia.");
                     }
                 })
                 .catch(function() {
