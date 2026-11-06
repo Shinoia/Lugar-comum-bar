@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lugar Comum Bar</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: system-ui, sans-serif; }
+        body { background-color: #dc2626; color: #000; min-height: 100vh; display: flex; flex-direction: column; }
+        header { background-color: #b91c1c; border-bottom: 2px solid #991b1b; padding: 1rem 1.5rem; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem; }
+        h1 { font-size: 1.5rem; font-weight: bold; color: #000; }
+        .nav-buttons { display: flex; gap: 0.5rem; background: #b91c1c; padding: 0.25rem; border-radius: 0.75rem; border: 2px solid #7f1d1d; }
+        button { cursor: pointer; border: none; font-weight: bold; font-size: 0.875rem; border-radius: 0.5rem; padding: 0.5rem 1rem; color: #000; }
+        .btn-tab { background: transparent; color: #1e1b4b; }
+        .active-caixa { background: #facc15; color: #000; }
+        .active-cozinha { background: #f97316; color: #000; }
+        .active-bar { background: #38bdf8; color: #000; }
+        main { flex: 1; padding: 1.5rem; display: block; }
+        .grid-caixa { display: grid; grid-template-columns: 1fr; gap: 1.5rem; }
+        @media(min-width: 1024px) { .grid-caixa { grid-template-columns: 2fr 1fr; } }
+        .mesas-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1rem; }
+        @media(min-width: 640px) { .mesas-grid { grid-template-columns: repeat(4, 1fr); } }
+        .mesa-card { background: #ef4444; border: 2px solid #b91c1c; border-radius: 0.75rem; padding: 1rem; cursor: pointer; display: flex; flex-direction: column; justify-content: space-between; height: 8rem; color: #000; }
+        .mesa-card.ocupada { border-color: #000; background: #f87171; }
+        .mesa-card.selecionada { border-color: #000; box-shadow: 0 0 0 3px rgba(0,0,0,0.3); }
+        .painel-lateral { background: #b91c1c; border: 2px solid #991b1b; border-radius: 1rem; padding: 1.25rem; display: flex; flex-direction: column; color: #000; }
+        .form-grupo { background: #ef4444; padding: 0.75rem; border-radius: 0.75rem; border: 2px solid #b91c1c; margin-bottom: 1rem; display: flex; flex-direction: column; gap: 0.5rem; }
+        select, input { background: #fff; border: 2px solid #000; border-radius: 0.5rem; padding: 0.5rem; font-size: 0.875rem; width: 100%; font-weight: bold; color: #000; }
+        .btn-lancar { background: #facc15; font-weight: bold; width: 100%; padding: 0.5rem; border-radius: 0.5rem; border: 2px solid #000; color: #000; }
+        .lista-itens { flex: 1; overflow-y: auto; max-height: 14rem; display: flex; flex-direction: column; gap: 0.5rem; }
+        .item-row { background: #ef4444; padding: 0.75rem; border-radius: 0.5rem; border: 2px solid #b91c1c; display: flex; justify-content: space-between; align-items: center; font-size: 0.875rem; color: #000; }
+        .kds-grid { display: grid; grid-template-columns: repeat(1, 1fr); gap: 1rem; }
+        @media(min-width: 768px) { .kds-grid { grid-template-columns: repeat(2, 1fr); } }
+        @media(min-width: 1024px) { .kds-grid { grid-template-columns: repeat(4, 1fr); } }
+        .kds-card { padding: 1rem; border-radius: 0.75rem; border: 2px solid #b91c1c; cursor: pointer; display: flex; flex-direction: column; justify-content: space-between; height: 11rem; background: #ef4444; color: #000; }
+        .kds-card.preparando { background: #f97316; }
+        .kds-card.pronto { background: #4ade80; }
+        .badge { padding: 0.125rem 0.5rem; border-radius: 0.25rem; font-size: 0.75rem; font-weight: bold; background: #facc15; color: #000; }
+        .sync-status { font-size: 0.75rem; font-weight: bold; background: #4ade80; padding: 0.25rem 0.5rem; border-radius: 0.25rem; border: 1px solid #000; color: #000; }
+    </style>
+</head>
+<body>
+    <header>
+        <div>
+            <h1>🍺 Lugar Comum Bar</h1>
+            <span id="sync-indicator" class="sync-status">Sistema Ativo</span>
+        </div>
+        <div class="nav-buttons">
+            <button id="btn-aba-caixa" class="btn-tab active-caixa" onclick="mudarAba('caixa')">🧮 Caixa / Mesas (16)</button>
+            <button id="btn-aba-cozinha" class="btn-tab" onclick="mudarAba('cozinha')">🍳 Cozinha</button>
+            <button id="btn-aba-bar" class="btn-tab" onclick="mudarAba('bar')">🍻 Bar</button>
+        </div>
+    </header>
+
+    <main id="app-conteudo"></main>
+
+    <script>
+        var API_URL = "https://script.google.com/macros/s/AKfycbyVAj1A6MV7NnQ96OvMSyoB57oIZjOWQOajWV2o2vkI1g153SGsoQjYebTo5XKxjLQ/exec";
+
+        // Cardápio carregado diretamente da planilha (com fallback garantido para kariri e refrigerante)
+        var CARDAPIO = [
+            { nome: "kariri", estoque: 100, preco: 23.00, tipo: "bebida" },
+            { nome: "Refrigerante", estoque: 100, preco: 12.00, tipo: "bebida" }
+        ];
+
+        var estado = {
+            abaAtiva: 'caixa',
+            mesaSelecionadaId: null,
+            pedidosGlobais: [],
+            mesas: []
+        };
+
+        for (var i = 1; i <= 16; i++) {
+            estado.mesas.push({ id: i, status: 'livre', itens: [] });
+        }
+
+        function processarPedidos() {
+            for (var i = 0; i < estado.mesas.length; i++) {
+                estado.mesas[i].itens = [];
+                estado.mesas[i].status = 'livre';
+            }
+            for (var k = 0; k < estado.pedidosGlobais.length; k++) {
+                var p = estado.pedidosGlobais[k];
+                var mesa = estado.mesas.find(function(m) { return m.id == p.mesa; });
+                if (mesa && p.status !== 'fechado') {
+                    mesa.status = 'ocupada';
+                    mesa.itens.push({
+                        idUnico: p.id,
+                        nome: p.produto,
+                        preco: Number(p.preco || 0),
+                        tipo: p.tipo || 'bebida',
+                        qtd: Number(p.qtd || 1),
+                        obs: p.obs || '',
+                        statusPreparo: p.status || 'pendente'
+                    });
+                }
+            }
+        }
+
+        function sincronizar() {
+            fetch(API_URL)
+                .then(function(res) { return res.json(); })
+                .then(function(data) {
+                    if (data) {
+                        if (data.produtos && data.produtos.length > 0) {
+                            CARDAPIO = data.produtos;
+                        }
+                        if (data.pedidos) {
+                            estado.pedidosGlobais = data.pedidos;
+                            processarPedidos();
+                        }
+                        renderizar();
+                    }
+                })
+                .catch(function(e) { console.log("Usando dados locais."); });
+        }
+
+        function mudarAba(aba) {
+            estado.abaAtiva = aba;
+            document.getElementById('btn-aba-caixa').className = "btn-tab " + (aba === 'caixa' ? 'active-caixa' : '');
+            document.getElementById('btn-aba-cozinha').className = "btn-tab " + (aba === 'cozinha' ? 'active-cozinha' : '');
+            document.getElementById('btn-aba-bar').className = "btn-tab " + (aba === 'bar' ? 'active-bar' : '');
+            renderizar();
+        }
+
+        function selecionarMesa(id) {
+            estado.mesaSelecionadaId = id;
+            renderizar();
+        }
+
+        function adicionarItem() {
+            if (!estado.mesaSelecionadaId) return;
+            var selectVal = document.getElementById('select-produto').value;
+            var prod = CARDAPIO.find(function(p) { return p.nome == selectVal; });
+            if (!prod) return;
+
+            var qtd = Number(document.getElementById('input-qtd').value) || 1;
+            var obs = document.getElementById('input-obs').value || '';
+
+            var novo = { 
+                id: Date.now() + "_" + Math.floor(Math.random()*1000), 
+                mesa: estado.mesaSelecionadaId, 
+                produto: prod.nome, 
+                qtd: qtd, 
+                preco: prod.preco, 
+                tipo: prod.tipo, 
+                obs: obs, 
+                status: 'pendente' 
+            };
+
+            estado.pedidosGlobais.push(novo);
+            processarPedidos();
+            renderizar();
+
+            fetch(API_URL, {
+                method: 'POST',
+                mode: 'no-cors',
+                headers: { 'Content-Type': 'text/plain' },
+                body: JSON.stringify(novo)
+            }).then(function() { setTimeout(sincronizar, 800); });
+        }
+
+        function fecharMesa(id) {
+            if (!confirm("Fechar Mesa " + id + "?")) return;
+            for (var i = 0; i < estado.pedidosGlobais.length; i++) {
+                if (estado.pedidosGlobais[i].mesa == id) {
+                    estado.pedidosGlobais[i].status = 'fechado';
+                }
+            }
+            processarPedidos();
+            estado.mesaSelecionadaId = null;
+            renderizar();
+
+            fetch(API_URL, {
+                method: 'POST',
+                mode: 'no-cors',
+                headers: { 'Content-Type': 'text/plain' },
+                body: JSON.stringify({ acao: 'fechar_mesa', mesa: id })
+            }).then(function() { setTimeout(sincronizar, 800); });
+        }
+
+        function atualizarStatus(idUnico, novoStatus) {
+            var p = estado.pedidosGlobais.find(function(x) { return x.id == idUnico; });
+            if (p) p.status = novoStatus;
+            processarPedidos();
+            renderizar();
+
+            fetch(API_URL, {
+                method: 'POST',
+                mode: 'no-cors',
+                headers: { 'Content-Type': 'text/plain' },
+                body: JSON.stringify({ acao: 'atualizar_status', id: idUnico, status: novoStatus })
+            }).then(function() { setTimeout(sincronizar, 800); });
+        }
+
+        function renderizar() {
+            var main = document.getElementById('app-conteudo');
+            if (!main) return;
+
+            if (estado.abaAtiva === 'caixa') {
+                var mesaSel = estado.mesas.find(function(m) { return m.id === estado.mesaSelecionadaId; });
+                var lateral = '';
+
+                if (mesaSel) {
+                    var total = 0;
+                    for (var i = 0; i < mesaSel.itens.length; i++) {
+                        total += mesaSel.itens[i].preco * mesaSel.itens[i].qtd;
+                    }
+
+                    var listaHtml = '';
+                    if (mesaSel.itens.length === 0) {
+                        listaHtml = '<p style="text-align: center; padding: 1rem;">Nenhum item lançado.</p>';
+                    } else {
+                        for (var j = 0; j < mesaSel.itens.length; j++) {
+                            var item = mesaSel.itens[j];
+                            listaHtml += '<div class="item-row"><div><strong>' + item.qtd + 'x ' + item.nome + '</strong>' + (item.obs ? '<br><small>Obs: ' + item.obs + '</small>' : '') + '<br><small>Status: ' + item.statusPreparo + '</small></div><div>R$ ' + (item.preco * item.qtd).toFixed(2) + '</div></div>';
+                        }
+                    }
+
+                    var opcoesHtml = '';
+                    for (var c = 0; c < CARDAPIO.length; c++) {
+                        var pItem = CARDAPIO[c];
+                        opcoesHtml += '<option value="' + pItem.nome + '">' + pItem.nome + ' - R$ ' + Number(pItem.preco).toFixed(2) + ' (Estoque: ' + pItem.estoque + ')</option>';
+                    }
+
+                    lateral = '<div class="painel-lateral">' +
+                        '<div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #991b1b; padding-bottom: 0.75rem; margin-bottom: 1rem;">' +
+                            '<h3>Mesa ' + mesaSel.id + ' (R$ ' + total.toFixed(2) + ')</h3>' +
+                            '<button onclick="fecharMesa(' + mesaSel.id + ')" style="background: #f87171; border: 2px solid #000; padding: 0.25rem 0.5rem; border-radius: 0.5rem;">Fechar Conta</button>' +
+                        '</div>' +
+                        '<div class="form-grupo">' +
+                            '<label style="font-size: 0.75rem;">SELECIONAR PRODUTO</label>' +
+                            '<select id="select-produto">' + opcoesHtml + '</select>' +
+                            '<div style="display: flex; gap: 0.5rem; margin-top: 0.25rem;">' +
+                                '<div style="flex: 1;"><label style="font-size:0.65rem;">Qtd Solicitada:</label><input type="number" id="input-qtd" value="1" min="1" style="text-align: center;"></div>' +
+                                '<div style="flex: 2;"><label style="font-size:0.65rem;">Observação:</label><input type="text" id="input-obs" placeholder="Ex: gelada"></div>' +
+                            '</div>' +
+                            '<button onclick="adicionarItem()" class="btn-lancar" style="margin-top:0.5rem;">Lançar Pedido</button>' +
+                        '</div>' +
+                        '<div class="lista-itens">' + listaHtml + '</div>' +
+                    '</div>';
+                } else {
+                    lateral = '<div class="painel-lateral" style="justify-content: center; align-items: center; text-align: center;"><p>👆 Clique em uma mesa ao lado para gerenciar.</p></div>';
+                }
+
+                var mesasHtml = '';
+                for (var mIdx = 0; mIdx < estado.mesas.length; mIdx++) {
+                    var m = estado.mesas[mIdx];
+                    var totalMesa = 0;
+                    for (var tIdx = 0; tIdx < m.itens.length; tIdx++) {
+                        totalMesa += m.itens[tIdx].preco * m.itens[tIdx].qtd;
+                    }
+                    var num = m.id < 10 ? '0' + m.id : m.id;
+                    var classeOcupada = m.status === 'ocupada' ? 'ocupada' : '';
+                    var classeSelecionada = m.id === estado.mesaSelecionadaId ? 'selecionada' : '';
+                    var textoStatus = m.status === 'ocupada' ? m.itens.length + ' itens' : 'Livre';
+
+                    mesasHtml += '<div class="mesa-card ' + classeOcupada + ' ' + classeSelecionada + '" onclick="selecionarMesa(' + m.id + ')">' +
+                        '<div style="display: flex; justify-content: space-between;"><strong>Mesa ' + num + '</strong><span>●</span></div>' +
+                        '<div><div style="font-size: 0.75rem;">' + textoStatus + '</div><div style="font-weight: bold;">R$ ' + totalMesa.toFixed(2) + '</div></div>' +
+                    '</div>';
+                }
+
+                main.innerHTML = '<div class="grid-caixa">' +
+                    '<div><h2 style="margin-bottom: 1rem; color:#000;">Selecione uma Mesa</h2><div class="mesas-grid">' + mesasHtml + '</div></div>' +
+                    lateral +
+                '</div>';
+            } else {
+                var tipo = estado.abaAtiva === 'cozinha' ? 'petisco' : 'bebida';
+                var lista = [];
+                for (var x = 0; x < estado.mesas.length; x++) {
+                    var mesaObj = estado.mesas[x];
+                    var itensMesa = mesaObj.itens || [];
+                    for (var y = 0; y < itensMesa.length; y++) {
+                        if (itensMesa[y].tipo === tipo) {
+                            lista.push({
+                                idUnico: itensMesa[y].idUnico,
+                                nome: itensMesa[y].nome,
+                                qtd: itensMesa[y].qtd,
+                                obs: itensMesa[y].obs,
+                                statusPreparo: itensMesa[y].statusPreparo,
+                                mesaId: mesaObj.id
+                            });
+                        }
+                    }
+                }
+
+                var kdsHtml = '';
+                if (lista.length === 0) {
+                    kdsHtml = '<p style="grid-column: span 4; text-align: center; padding: 3rem; color:#000; font-weight:bold;">Nenhum item pendente no momento.</p>';
+                } else {
+                    for (var z = 0; z < lista.length; z++) {
+                        var kItem = lista[z];
+                        var proxStatus = kItem.statusPreparo === 'pendente' ? 'preparando' : (kItem.statusPreparo === 'preparando' ? 'pronto' : 'pendente');
+                        kdsHtml += '<div class="kds-card ' + kItem.statusPreparo + '" onclick="atualizarStatus(\'' + kItem.idUnico + '\', \'' + proxStatus + '\')">' +
+                            '<div style="display: flex; justify-content: space-between;"><span class="badge">Mesa ' + kItem.mesaId + '</span><span style="font-size:0.75rem; text-transform:uppercase;">' + kItem.statusPreparo + '</span></div>' +
+                            '<div style="font-size: 1.2rem; font-weight: bold;">' + kItem.qtd + 'x ' + kItem.nome + '</div>' +
+                            (kItem.obs ? '<div style="font-size:0.75rem; background:rgba(0,0,0,0.1); padding:0.2rem; border-radius:4px;">Obs: ' + kItem.obs + '</div>' : '') +
+                            '<div style="font-size: 0.75rem; text-align: center;">Clique para mudar status</div>' +
+                        '</div>';
+                    }
+                }
+
+                var titulo = estado.abaAtiva === 'cozinha' ? '🍳 Cozinha (Petiscos)' : '🍻 Bar (Bebidas)';
+                main.innerHTML = '<div><h2 style="margin-bottom: 1rem; color:#000;">' + titulo + '</h2><div class="kds-grid">' + kdsHtml + '</div></div>';
+            }
+        }
+
+        renderizar();
+        sincronizar();
+        setInterval(sincronizar, 3000);
+    </script>
+</body>
+</html>
