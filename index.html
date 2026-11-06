@@ -30,13 +30,6 @@
         .btn-lancar { background: #facc15; font-weight: bold; width: 100%; padding: 0.5rem; border-radius: 0.5rem; border: 2px solid #000; color: #000; }
         .lista-itens { flex: 1; overflow-y: auto; max-height: 14rem; display: flex; flex-direction: column; gap: 0.5rem; }
         .item-row { background: #ef4444; padding: 0.75rem; border-radius: 0.5rem; border: 2px solid #b91c1c; display: flex; justify-content: space-between; align-items: center; font-size: 0.875rem; color: #000; }
-        .kds-grid { display: grid; grid-template-columns: repeat(1, 1fr); gap: 1rem; }
-        @media(min-width: 768px) { .kds-grid { grid-template-columns: repeat(2, 1fr); } }
-        @media(min-width: 1024px) { .kds-grid { grid-template-columns: repeat(4, 1fr); } }
-        .kds-card { padding: 1rem; border-radius: 0.75rem; border: 2px solid #b91c1c; cursor: pointer; display: flex; flex-direction: column; justify-content: space-between; height: 11rem; background: #ef4444; color: #000; }
-        .kds-card.preparando { background: #f97316; }
-        .kds-card.pronto { background: #4ade80; }
-        .badge { padding: 0.125rem 0.5rem; border-radius: 0.25rem; font-size: 0.75rem; font-weight: bold; background: #facc15; color: #000; }
         .sync-status { font-size: 0.75rem; font-weight: bold; background: #4ade80; padding: 0.25rem 0.5rem; border-radius: 0.25rem; border: 1px solid #000; color: #000; }
     </style>
 </head>
@@ -90,17 +83,15 @@
                         mesaObj.status = 'livre';
                     } else {
                         mesaObj.status = 'ocupada';
-                        mesaObj.idExibicao = p.mesa; // Mantém 3, 3.1, 3.2
+                        mesaObj.idExibicao = p.mesa;
                         mesaObj.itens.push({
                             produto: p.produto,
-                            qtd: Number(p.qnt || 1),
-                            preco: 0 // Preço mapeado pelo cardápio se necessário
+                            qtd: Number(p.qnt || 1)
                         });
                     }
                 }
             }
 
-            // Atualiza os contadores de reabertura para o formato .1, .2
             for (var mId in contagemFechamentos) {
                 var mObj = estado.mesas.find(function(m) { return m.id == mId; });
                 if (mObj && mObj.status === 'livre') {
@@ -149,7 +140,6 @@
             var qtd = Number(document.getElementById('input-qtd').value) || 1;
             var mesaObj = estado.mesas.find(function(m) { return m.id == estado.mesaSelecionadaId; });
             
-            // Calcula o ID da mesa (ex: 3, 3.1, 3.2)
             var idMesaFinal = mesaObj.id;
             if (mesaObj.status === 'livre' && mesaObj.contadorFehamentos > 0) {
                 idMesaFinal = mesaObj.id + "." + mesaObj.contadorFehamentos;
@@ -225,11 +215,11 @@
 
                     var opcoesHtml = '';
                     if (CARDAPIO.length === 0) {
-                        opcoesHtml = '<option>Carregando produtos...</option>';
+                        opcoesHtml = '<option value="">A carregar cardápio da planilha...</option>';
                     } else {
                         for (var c = 0; c < CARDAPIO.length; c++) {
                             var pItem = CARDAPIO[c];
-                            opcoesHtml += '<option value="' + pItem.nome + '">' + pItem.nome + ' - R$ ' + Number(pItem.preco).toFixed(2) + ' (Estoque: ' + pItem.estoque + ')</option>';
+                            opcoesHtml += '<option value="' + pItem.nome + '">' + pItem.nome + ' - R$ ' + Number(pItem.preco).toFixed(2) + ' (Estq: ' + pItem.estoque + ')</option>';
                         }
                     }
 
@@ -258,7 +248,6 @@
                 var mesasHtml = '';
                 for (var mIdx = 0; mIdx < estado.mesas.length; mIdx++) {
                     var m = estado.mesas[mIdx];
-                    var num = m.id < 10 ? '0' + m.id : m.id;
                     var classeOcupada = m.status === 'ocupada' ? 'ocupada' : '';
                     var classeSelecionada = m.id === estado.mesaSelecionadaId ? 'selecionada' : '';
                     var textoStatus = m.status === 'ocupada' ? m.itens.length + ' itens' : 'Livre';
