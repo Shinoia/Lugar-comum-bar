@@ -333,17 +333,28 @@
                 alert("Não é possível finalizar o dia! Ainda existem mesas abertas/ocupadas.");
                 return;
             }
-            if (!confirm("Deseja realmente finalizar o dia, ordenar a planilha por mesas e consolidar?")) return;
+            var senha = prompt("Digite a senha para finalizar o dia:");
+            if (senha === null) return;
 
-            fetch(API_URL, {
-                method: 'POST',
-                mode: 'no-cors',
-                headers: { 'Content-Type': 'text/plain' },
-                body: JSON.stringify({ acao: 'finalizar_dia' })
-            }).then(function() {
-                alert("Dia finalizado e pedidos ordenados por mesa com sucesso!");
-                sincronizar();
-            });
+            fetch(API_URL + '?acao=finalizar_dia&senha=' + encodeURIComponent(senha))
+                .then(function(res) { return res.json(); })
+                .then(function(r) {
+                    if (r && r.result === 'success') {
+                        estado.pendentes = [];
+                        estado.overrides = {};
+                        estado.pedidosGlobais = [];
+                        estado.mesaSelecionadaId = null;
+                        processarPedidos();
+                        renderizar();
+                        alert("Dia finalizado! Total de vendas: " + (r.totalTexto || '') + "\nAs mesas voltaram ao início (Mesa 1, Mesa 2, ...).");
+                        sincronizar();
+                    } else {
+                        alert((r && r.error) ? r.error : "Não foi possível finalizar o dia.");
+                    }
+                })
+                .catch(function() {
+                    alert("Falha de conexão. Verifique a internet e tente novamente.");
+                });
         }
 
         function renderizar() {
