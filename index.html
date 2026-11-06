@@ -115,6 +115,31 @@
             return '<span style="background:' + cor + '; border: 2px solid #000; border-radius: 999px; padding: 0 0.4rem; font-size: 0.65rem; font-weight: bold; color: #000; display: inline-block; line-height: 1.1rem; margin-left: 0.25rem;">' + rotulo + '</span>';
         }
 
+        // estoque disponível = estoque da planilha - pedidos enviados que o servidor ainda não gravou
+        function estoqueDisponivel(nome) {
+            var p = CARDAPIO.find(function(x) { return x.nome === nome; });
+            if (!p) return 0;
+            var reservado = 0;
+            estado.pendentes.forEach(function(pd) {
+                if (pd.pedido.produto === nome) reservado += Number(pd.pedido.qnt) || 0;
+            });
+            return (Number(p.estoque) || 0) - reservado;
+        }
+        function primeiroDisponivel() {
+            for (var c = 0; c < CARDAPIO.length; c++) {
+                if (estoqueDisponivel(CARDAPIO[c].nome) > 0) return CARDAPIO[c].nome;
+            }
+            return CARDAPIO.length > 0 ? CARDAPIO[0].nome : '';
+        }
+        function desfazerPedido(novo, mensagem) {
+            estado.pendentes = estado.pendentes.filter(function(pd) { return pd.pedido !== novo; });
+            estado.pedidosGlobais = estado.pedidosGlobais.filter(function(x) { return x !== novo; });
+            processarPedidos();
+            renderizar();
+            alert(mensagem);
+            sincronizar();
+        }
+
         function processarPedidos() {
             try {
                 for (var i = 0; i < estado.mesas.length; i++) {
@@ -256,6 +281,9 @@
             }
 
             var qtd = Number(estado.quantidadeCache) || 1;
+            var disponivel = estoqueDisponivel(prod.nome);
+            if (disponivel <= 0) { alert(prod.nome + ' está esgotado.'); return; }
+            if (qtd > disponivel) { alert('Estoque insuficiente de ' + prod.nome + ': restam ' + disponivel + '.'); return; }
             var mesaObj = estado.mesas.find(function(m) { return m.id == estado.mesaSelecionadaId; });
             
             var idMesaFinal = mesaObj.id;
@@ -280,25 +308,33 @@
             estado.pedidosGlobais.push(novo);
 
             // volta o formulário ao padrão: primeiro produto da lista e quantidade 1
-            estado.produtoSelecionadoCache = CARDAPIO.length > 0 ? CARDAPIO[0].nome : '';
+            estado.produtoSelecionadoCache = primeiroDisponivel();
             estado.quantidadeCache = 1;
             var selForm = document.getElementById('select-produto');
             var qtdForm = document.getElementById('input-qtd');
-            if (selForm) { selForm.selectedIndex = 0; if (CARDAPIO.length > 0) selForm.value = CARDAPIO[0].nome; }
+            if (selForm) { selForm.selectedIndex = 0; if (estado.produtoSelecionadoCache) selForm.value = estado.produtoSelecionadoCache; }
             if (qtdForm) qtdForm.value = 1;
 
             processarPedidos();
             renderizar();
 
-            fetch(API_URL, {
-                method: 'POST',
-                mode: 'no-cors',
-                headers: { 'Content-Type': 'text/plain' },
-                keepalive: true,
-                body: JSON.stringify(novo)
-            }).then(function() {
-                setTimeout(sincronizar, 1000);
-            });
+            var urlPedido = API_URL + '?acao=novo_pedido&mesa=' + encodeURIComponent(novo.mesa) +
+                '&produto=' + encodeURIComponent(novo.produto) + '&qnt=' + encodeURIComponent(novo.qnt);
+            fetch(urlPedido, { keepalive: true })
+                .then(function(res) { return res.json(); })
+                .then(function(r) {
+                    if (r && r.result === 'success') {
+                        setTimeout(sincronizar, 500);
+                    } else if (r && r.error) {
+                        desfazerPedido(novo, r.error);
+                    } else {
+                        // Apps Script antigo (não conhece novo_pedido): envia pelo método antigo
+                        fetch(API_URL, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'text/plain' },
+                            keepalive: true, body: JSON.stringify(novo) })
+                            .then(function() { setTimeout(sincronizar, 1000); });
+                    }
+                })
+                .catch(function() { setTimeout(sincronizar, 1000); });
         }
 
         var clickTimers = {};
@@ -417,8 +453,9 @@
                         var opcoesHtml = '';
                         for (var c = 0; c < CARDAPIO.length; c++) {
                             var pItem = CARDAPIO[c];
-                            var selecionadoAttr = (pItem.nome === estado.produtoSelecionadoCache) ? 'selected' : '';
-                            opcoesHtml += '<option value="' + pItem.nome + '" ' + selecionadoAttr + '>' + pItem.nome + ' - R$ ' + Number(pItem.preco).toFixed(2) + '</option>';
+                            var esgotado = estoqueDisponivel(pItem.nome) <= 0;
+                            var selecionadoAttr = (pItem.nome === estado.produtoSelecionadoCache && !esgotado) ? 'selected' : '';
+                            opcoesHtml += '<option value="' + pItem.nome + '" ' + selecionadoAttr + (esgotado ? ' disabled' : '') + '>' + pItem.nome + ' - R$ ' + Number(pItem.preco).toFixed(2) + (esgotado ? ' (ESGOTADO)' : '') + '</option>';
                         }
 
                         var idExibicaoMesa = mesaSel.idExibicao || mesaSel.id;
