@@ -528,7 +528,7 @@
                         renderizar();
                         alert("Dia finalizado!\nTotal de vendas: " + (r.totalTexto || '') +
                             "\nBebidas: " + (r.bebidasTexto || '') + "\nComidas: " + (r.comidasTexto || '') +
-                            "\nMesas que ficaram em aberto: " + (r.emAbertoTexto || '') + " (" + (r.comandasAbertas || 0) + ")" +
+                            "\nMesas que ficaram em aberto: " + (r.emAbertoTexto || '') + " (" + (r.nomesAbertas || 'nenhuma') + ")" +
                             "\n\nAs mesas voltaram ao início (Mesa 1, Mesa 2, ...).");
                         estado.pessoasNovas = [];
                         sincronizar();
