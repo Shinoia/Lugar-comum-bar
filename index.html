@@ -109,6 +109,7 @@
             return String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
         }
         function brl(v) { return Number(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }); }
+        function ehVip(chave) { return String(chave).indexOf('VIP-') === 0; }
         function ehPessoa(chave) { return String(chave).indexOf(PREFIXO_PESSOA) === 0; }
         function limparNome(n) {
             return String(n || '').replace(/[.|<>&"'`=+@\\]/g, ' ').replace(/\s+/g, ' ').trim().substring(0, 30);
@@ -117,7 +118,7 @@
         function acharMesa(id) { return todasMesas().find(function(m) { return String(m.id) === String(id); }); }
         // nome para mostrar na tela
         function nomeMesa(m) {
-            if (m.pessoa) return '👤 ' + m.nome;
+            if (m.pessoa) return (m.vip ? '⭐ ' : '👤 ') + m.nome;
             var r = m.idExibicao || m.id;
             if (m.status === 'livre' && m.contadorFehamentos > 0) r = m.id + '.' + m.contadorFehamentos;
             return 'Mesa ' + r;
@@ -194,10 +195,10 @@
                     if (!p || !p.mesa) continue;
                     var baseId = String(p.mesa).split('.')[0];
                     var mesaObj = estado.mesas.find(function(m) { return m.id == baseId; });
-                    if (ehPessoa(p.mesa)) {
+                    if (ehPessoa(p.mesa) || ehVip(p.mesa)) {
                         if (p.status === 'fechado') continue;
                         if (!pessoasMapa[p.mesa]) {
-                            pessoasMapa[p.mesa] = { id: p.mesa, pessoa: true, nome: String(p.mesa).substring(PREFIXO_PESSOA.length), status: 'ocupada', itens: [], idExibicao: p.mesa, contadorFehamentos: 0, abertaEm: p.oi || '' };
+                            pessoasMapa[p.mesa] = { id: p.mesa, pessoa: true, vip: ehVip(p.mesa), nome: ehVip(p.mesa) ? String(p.mesa) : String(p.mesa).substring(PREFIXO_PESSOA.length), status: 'ocupada', itens: [], idExibicao: p.mesa, contadorFehamentos: 0, abertaEm: p.oi || '' };
                         }
                         mesaObj = pessoasMapa[p.mesa];
                         var pc = CARDAPIO.find(function(c) { return c.nome && c.nome.toLowerCase() === String(p.produto).toLowerCase(); });
@@ -236,10 +237,9 @@
                 // pessoas: as que têm pedidos em aberto + as cadastradas que ainda não pediram
                 estado.pessoas = [];
                 for (var chv2 in pessoasMapa) estado.pessoas.push(pessoasMapa[chv2]);
-                estado.pessoasNovas.forEach(function(nome) {
-                    var chave = PREFIXO_PESSOA + nome;
+                estado.pessoasNovas.forEach(function(chave) {
                     if (!pessoasMapa[chave]) {
-                        estado.pessoas.push({ id: chave, pessoa: true, nome: nome, status: 'ocupada', itens: [], idExibicao: chave, contadorFehamentos: 0, abertaEm: '' });
+                        estado.pessoas.push({ id: chave, pessoa: true, vip: ehVip(chave), nome: ehVip(chave) ? chave : chave.substring(PREFIXO_PESSOA.length), status: 'ocupada', itens: [], idExibicao: chave, contadorFehamentos: 0, abertaEm: '' });
                     }
                 });
                 estado.pessoas.sort(function(a, b) { return a.nome.localeCompare(b.nome, 'pt'); });
@@ -336,13 +336,26 @@
         }
 
         function novaPessoa() {
-            var nome = limparNome(prompt('Nome da pessoa:'));
-            if (!nome) return;
-            var existe = estado.pessoasNovas.some(function(n) { return n.toLowerCase() === nome.toLowerCase(); }) ||
-                estado.pessoas.some(function(p) { return p.nome.toLowerCase() === nome.toLowerCase(); });
-            if (!existe) estado.pessoasNovas.push(nome);
+            var entrada = limparNome(prompt('Nome da pessoa:'));
+            if (!entrada) return;
+            var chave;
+            var up = entrada.toUpperCase();
+            if (up === 'VIP') {
+                // cliente VIP (mensalista): pede o nome e grava como VIP-NOME
+                var nomeVip = limparNome(prompt('Nome do cliente VIP:')).toUpperCase();
+                if (!nomeVip) return;
+                chave = 'VIP-' + nomeVip;
+            } else if (up.indexOf('VIP-') === 0 && up.length > 4) {
+                chave = up;
+            } else {
+                chave = PREFIXO_PESSOA + entrada;
+            }
+            var chaveMin = chave.toLowerCase();
+            var existe = estado.pessoasNovas.some(function(n) { return n.toLowerCase() === chaveMin; }) ||
+                estado.pessoas.some(function(p) { return p.id.toLowerCase() === chaveMin; });
+            if (!existe) estado.pessoasNovas.push(chave);
             processarPedidos();
-            var alvo = estado.pessoas.find(function(p) { return p.nome.toLowerCase() === nome.toLowerCase(); });
+            var alvo = estado.pessoas.find(function(p) { return p.id.toLowerCase() === chaveMin; });
             mudarAba('caixa');
             if (alvo) selecionarMesa(alvo.id);
         }
@@ -434,7 +447,7 @@
                 estado.overrides[chavePedido(estado.pedidosGlobais, idItem)] = { status: novoEstado, t: Date.now() };
                 if (p.linha) {
                     fetch(API_URL, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'text/plain' },
-                        body: JSON.stringify({ acao: 'status_preparo', linha: p.linha, produto: p.produto, statusPreparo: novoEstado }) });
+                        body: JSON.stringify({ acao: 'status_preparo', linha: p.linha, mesa: p.mesa, produto: p.produto, statusPreparo: novoEstado }) });
                 }
                 processarPedidos();
                 renderizar();
@@ -466,7 +479,7 @@
         }
 
         function encerrarTodas() {
-            var abertas = todasMesas().filter(function(m) { return m.status === 'ocupada' && m.itens.length > 0; });
+            var abertas = todasMesas().filter(function(m) { return m.status === 'ocupada' && m.itens.length > 0 && !m.vip; });
             if (abertas.length === 0) { alert('Não há mesas abertas.'); return; }
             if (!confirm('Encerrar ' + abertas.length + ' comanda(s) em aberto, total ' + brl(abertas.reduce(function(a, m) { return a + totalMesaObj(m); }, 0)) + '?')) return;
             var senha = prompt('Digite a senha para encerrar todas as mesas:');
@@ -489,9 +502,9 @@
             var mesaObj = acharMesa(id);
             if (!mesaObj) return;
             var idAlvo = mesaObj.pessoa ? mesaObj.id : (mesaObj.idExibicao || id);
-            if (!confirm("Fechar " + nomeMesa(mesaObj) + "?")) return;
+            if (!confirm(mesaObj.vip ? ("Guardar o consumo de " + nomeMesa(mesaObj) + " na conta VIP (aba VIP da planilha)?") : ("Fechar " + nomeMesa(mesaObj) + "?"))) return;
             if (mesaObj.pessoa) {
-                estado.pessoasNovas = estado.pessoasNovas.filter(function(n) { return n !== mesaObj.nome; });
+                estado.pessoasNovas = estado.pessoasNovas.filter(function(n) { return n !== mesaObj.id; });
             }
 
             fetch(API_URL, {
@@ -508,7 +521,7 @@
         }
 
         function finalizarDia() {
-            var mesasOcupadas = todasMesas().filter(function(m) { return m.status === 'ocupada' && m.itens.length > 0; });
+            var mesasOcupadas = todasMesas().filter(function(m) { return m.status === 'ocupada' && m.itens.length > 0 && !m.vip; });
             if (mesasOcupadas.length > 0) {
                 alert("Não é possível finalizar o dia! Ainda existem mesas abertas.\nVá na aba 📋 Abertas e use \"Encerrar todas\" (senha) se for o caso.");
                 return;
@@ -593,7 +606,7 @@
                         lateral = '<div class="painel-lateral">' +
                             '<div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #991b1b; padding-bottom: 0.75rem; margin-bottom: 1rem;">' +
                                 '<h3>' + esc(nomeMesa(mesaSel)) + '</h3>' +
-                                '<button data-id="' + esc(mesaSel.id) + '" onclick="fecharMesa(this.getAttribute(\'data-id\'))" style="background: #f87171; border: 2px solid #000; padding: 0.25rem 0.5rem; border-radius: 0.5rem;">Fechar Conta</button>' +
+                                '<button data-id="' + esc(mesaSel.id) + '" onclick="fecharMesa(this.getAttribute(\'data-id\'))" style="background: #f87171; border: 2px solid #000; padding: 0.25rem 0.5rem; border-radius: 0.5rem;">' + (mesaSel.vip ? 'Guardar na conta VIP' : 'Fechar Conta') + '</button>' +
                             '</div>' +
                             '<div style="background: #facc15; border: 2px solid #000; padding: 0.5rem; border-radius: 0.5rem; margin-bottom: 1rem; text-align: center;">' +
                                 '<strong style="font-size: 1rem;">Total Comanda: ' + brl(valorTotalComanda) + '</strong>' +
@@ -629,41 +642,51 @@
                     var mesasHtml = '';
                     for (var mIdx = 0; mIdx < estado.mesas.length; mIdx++) mesasHtml += cardHtml(estado.mesas[mIdx]);
                     var pessoasHtml = '';
-                    for (var pIdx = 0; pIdx < estado.pessoas.length; pIdx++) pessoasHtml += cardHtml(estado.pessoas[pIdx]);
+                    var vipHtml = '';
+                    for (var pIdx = 0; pIdx < estado.pessoas.length; pIdx++) {
+                        if (estado.pessoas[pIdx].vip) vipHtml += cardHtml(estado.pessoas[pIdx]);
+                        else pessoasHtml += cardHtml(estado.pessoas[pIdx]);
+                    }
 
                     main.innerHTML = '<div class="grid-caixa">' +
                         '<div><h2 style="margin-bottom: 1rem; color:#000;">Selecione uma Mesa</h2><div class="mesas-grid">' + mesasHtml + '</div>' +
                         '<div style="display:flex; justify-content:space-between; align-items:center; margin: 1.5rem 0 1rem;"><h2 style="color:#000;">👤 Pessoas (em pé)</h2>' +
                         '<button onclick="novaPessoa()" style="background:#facc15; border:2px solid #000;">+ Nova Pessoa</button></div>' +
                         (pessoasHtml ? '<div class="mesas-grid">' + pessoasHtml + '</div>' : '<p style="color:#000; font-size:0.85rem;">Nenhuma pessoa em aberto. Use "+ Nova Pessoa" para lançar pedidos no nome de alguém.</p>') +
+                        (vipHtml ? '<h2 style="color:#000; margin: 1.5rem 0 0.5rem;">⭐ VIP (conta mensal)</h2><p style="color:#000; font-size:0.8rem; margin-bottom:0.75rem;">Não entram no fechamento do dia nem no "Encerrar todas".</p><div class="mesas-grid">' + vipHtml + '</div>' : '') +
                         '</div>' +
                         lateral +
                     '</div>';
                 } else if (estado.abaAtiva === 'abertas') {
-                    var abertasLista = todasMesas().filter(function(m) { return m.status === 'ocupada' && m.itens.length > 0; });
+                    var abertasTodas = todasMesas().filter(function(m) { return m.status === 'ocupada' && m.itens.length > 0; });
+                    var vipLista = abertasTodas.filter(function(m) { return m.vip; });
+                    var abertasLista = abertasTodas.filter(function(m) { return !m.vip; });
                     var totalAbertas = abertasLista.reduce(function(a, m) { return a + totalMesaObj(m); }, 0);
-                    var abHtml = '';
-                    for (var ab = 0; ab < abertasLista.length; ab++) {
-                        var ma = abertasLista[ab];
+                    var abHtml = '', vipAbHtml = '';
+                    for (var ab = 0; ab < abertasTodas.length; ab++) {
+                        var ma = abertasTodas[ab];
                         var linhasAb = '';
                         for (var li = 0; li < ma.itens.length; li++) {
                             var ia = ma.itens[li];
                             linhasAb += '<div style="display:flex; justify-content:space-between; gap:0.5rem; font-size:0.85rem;"><span>' + ia.qnt + 'x ' + esc(ia.produto) + '</span>' +
                                 '<span class="badge" style="background:' + corStatus(ia.statusPreparo || 'pendente') + ';">' + String(ia.statusPreparo || 'pendente').toUpperCase() + '</span></div>';
                         }
-                        abHtml += '<div class="mesa-card ocupada" style="height:auto; gap:0.5rem; cursor:default;">' +
+                        var cartaoAb = '<div class="mesa-card ocupada" style="height:auto; gap:0.5rem; cursor:default;">' +
                             '<div style="display:flex; justify-content:space-between;"><strong>' + esc(nomeMesa(ma)) + '</strong><strong>' + brl(totalMesaObj(ma)) + '</strong></div>' +
                             (ma.abertaEm ? '<small>Aberta em ' + esc(ma.abertaEm) + '</small>' : '') +
                             '<div style="display:flex; flex-direction:column; gap:0.25rem;">' + linhasAb + '</div>' +
                             '<button data-id="' + esc(ma.id) + '" onclick="abrirNaCaixa(this.getAttribute(\'data-id\'))" style="background:#fff; border:2px solid #000;">Abrir na caixa</button>' +
                         '</div>';
+                        if (ma.vip) vipAbHtml += cartaoAb; else abHtml += cartaoAb;
                     }
+                    var totalVipAb = vipLista.reduce(function(a, m) { return a + totalMesaObj(m); }, 0);
                     main.innerHTML = '<div>' +
                         '<div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.75rem; margin-bottom:1rem;">' +
                             '<h2 style="color:#000;">📋 Mesas abertas: ' + abertasLista.length + ' | ' + brl(totalAbertas) + '</h2>' +
                             '<button onclick="encerrarTodas()" style="background:#f87171; border:2px solid #000;"' + (abertasLista.length === 0 ? ' disabled' : '') + '>🔒 Encerrar todas (senha)</button>' +
                         '</div>' +
                         (abHtml ? '<div class="mesas-grid">' + abHtml + '</div>' : '<p style="color:#000; font-weight:bold; padding:2rem; text-align:center;">Nenhuma mesa em aberto.</p>') +
+                        (vipAbHtml ? '<h2 style="color:#000; margin: 1.5rem 0 0.5rem;">⭐ VIP em aberto: ' + vipLista.length + ' | ' + brl(totalVipAb) + '</h2><p style="color:#000; font-size:0.8rem; margin-bottom:0.75rem;">Contas mensais: não entram no "Encerrar todas" nem no fechamento do dia.</p><div class="mesas-grid">' + vipAbHtml + '</div>' : '') +
                     '</div>';
                 } else {
                     var ehCozinha = (estado.abaAtiva === 'cozinha');
@@ -715,7 +738,7 @@
                 }
                 var btnAb = document.getElementById('btn-aba-abertas');
                 if (btnAb) {
-                    var nAb = todasMesas().filter(function(m) { return m.status === 'ocupada' && m.itens.length > 0; }).length;
+                    var nAb = todasMesas().filter(function(m) { return m.status === 'ocupada' && m.itens.length > 0 && !m.vip; }).length;
                     btnAb.textContent = '📋 Abertas' + (nAb > 0 ? ' (' + nAb + ')' : '');
                 }
             } catch (err) {
