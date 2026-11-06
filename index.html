@@ -97,7 +97,7 @@
                         mesaObj.status = 'ocupada';
                         mesaObj.idExibicao = p.mesa;
                         mesaObj.itens.push({
-                            idUnico: p.id || k,
+                            idItem: k, // ID único baseado na linha do pedido global
                             produto: p.produto,
                             qnt: Number(p.qnt || 1),
                             tipo: p.tipo || 'bar',
@@ -124,6 +124,12 @@
                             CARDAPIO = data.produtos;
                         }
                         if (data.pedidos) {
+                            // Preserva o estado de preparo local se já existir
+                            for (var i = 0; i < data.pedidos.length; i++) {
+                                if (estado.pedidosGlobais[i] && estado.pedidosGlobais[i].statusPreparo) {
+                                    data.pedidos[i].statusPreparo = estado.pedidosGlobais[i].statusPreparo;
+                                }
+                            }
                             estado.pedidosGlobais = data.pedidos;
                             processarPedidos();
                         }
@@ -198,46 +204,40 @@
             });
         }
 
-        // 1 clique = preparando (laranja) | 2 cliques = pronto (verde)
-        var clickTimer = null;
-        function lidarComCliqueCard(produtoNome, mesaId) {
-            if (clickTimer !== null) {
-                clearTimeout(clickTimer);
-                clickTimer = null;
+        // Gestão de cliques individuais por ID único do item
+        var clickTimers = {};
+        function lidarComCliqueCard(idItem) {
+            if (clickTimers[idItem]) {
+                clearTimeout(clickTimers[idItem]);
+                clickTimers[idItem] = null;
                 // Segundo clique: muda para PRONTO (verde)
-                mudarEstadoPedido(produtoNome, mesaId, 'pronto');
+                mudarEstadoPorId(idItem, 'pronto');
             } else {
-                clickTimer = setTimeout(function() {
-                    clickTimer = null;
-                    // Primeiro clique único: muda para PREPARANDO (laranja) ou reinicia ciclo se já estiver pronto/entregue
-                    for (var i = 0; i < estado.pedidosGlobais.length; i++) {
-                        var p = estado.pedidosGlobais[i];
-                        if (p.mesa == mesaId && p.produto === produtoNome && p.status !== 'fechado') {
-                            var atual = p.statusPreparo || 'pendente';
-                            if (atual === 'pendente') {
-                                p.statusPreparo = 'preparando';
-                            } else {
-                                p.statusPreparo = 'pendente';
-                            }
-                            break;
+                clickTimers[idItem] = setTimeout(function() {
+                    clickTimers[idItem] = null;
+                    // Primeiro clique: muda para PREPARANDO (laranja) ou reinicia se já estiver pronto/entregue
+                    var p = estado.pedidosGlobais[idItem];
+                    if (p && p.status !== 'fechado') {
+                        var atual = p.statusPreparo || 'pendente';
+                        if (atual === 'pendente') {
+                            p.statusPreparo = 'preparando';
+                        } else {
+                            p.statusPreparo = 'pendente';
                         }
+                        processarPedidos();
+                        renderizar();
                     }
-                    processarPedidos();
-                    renderizar();
-                }, 250); // espera 250ms para ver se haverá duplo clique
+                }, 250);
             }
         }
 
-        function mudarEstadoPedido(produtoNome, mesaId, novoEstado) {
-            for (var i = 0; i < estado.pedidosGlobais.length; i++) {
-                var p = estado.pedidosGlobais[i];
-                if (p.mesa == mesaId && p.produto === produtoNome && p.status !== 'fechado') {
-                    p.statusPreparo = novoEstado;
-                    break;
-                }
+        function mudarEstadoPorId(idItem, novoEstado) {
+            var p = estado.pedidosGlobais[idItem];
+            if (p && p.status !== 'fechado') {
+                p.statusPreparo = novoEstado;
+                processarPedidos();
+                renderizar();
             }
-            processarPedidos();
-            renderizar();
         }
 
         function fecharMesa(id) {
@@ -361,6 +361,7 @@
 
                                 if ((ehCozinha && eCozinhaItem) || (!ehCozinha && !eCozinhaItem)) {
                                     itensKDS.push({
+                                        idItem: itemMesa.idItem,
                                         mesa: mesaObj.idExibicao || mesaObj.id,
                                         produto: itemMesa.produto,
                                         qnt: itemMesa.qnt,
@@ -379,12 +380,12 @@
                             var kItem = itensKDS[z];
                             var classePreparo = kItem.statusPreparo; // 'pendente', 'preparando', 'pronto', 'entregue'
                             
-                            kdsHtml += '<div class="kds-card ' + classePreparo + '" onclick="lidarComCliqueCard(\'' + kItem.produto + '\', \'' + kItem.mesa + '\')">' +
+                            kdsHtml += '<div class="kds-card ' + classePreparo + '" onclick="lidarComCliqueCard(' + kItem.idItem + ')">' +
                                 '<div style="display: flex; justify-content: space-between;"><span class="badge">Mesa ' + kItem.mesa + '</span><span style="font-size:0.75rem; font-weight:bold;">' + kItem.statusPreparo.toUpperCase() + '</span></div>' +
                                 '<div style="font-size: 1.2rem; font-weight: bold;">' + kItem.qnt + 'x ' + kItem.produto + '</div>' +
                                 '<div style="display: flex; justify-content: space-between; align-items: center; margin-top: 0.5rem;">' +
                                     '<span style="font-size: 0.65rem; font-weight: bold;">1x Laranja | 2x Verde</span>' +
-                                    '<button class="btn-acao-entregue" onclick="event.stopPropagation(); mudarEstadoPedido(\'' + kItem.produto + '\', \'' + kItem.mesa + '\', \'entregue\')">Marcar Entregue</button>' +
+                                    '<button class="btn-acao-entregue" onclick="event.stopPropagation(); mudarEstadoPorId(' + kItem.idItem + ', \'entregue\')">Marcar Entregue</button>' +
                                 '</div>' +
                             '</div>';
                         }
