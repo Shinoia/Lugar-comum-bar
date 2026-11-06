@@ -63,12 +63,15 @@
     <script>
         var API_URL = "https://script.google.com/macros/s/AKfycbwTl5W2f8Ta8oXRXWwW0uWze1IpDwBmXpwgeW7wQxBDUJ_bo09NwzKaMkrwIaJubG_3/exec";
 
-        var CARDAPIO = [];
+        var CARDAPIO = [
+            { nome: "Carregando cardápio...", preco: 0, estoque: 0, tipo: "bar" }
+        ];
+        
         var estado = {
             abaAtiva: 'caixa',
             mesaSelecionadaId: null,
-            produtoSelecionadoCache: '', // Guarda o produto selecionado para não perder ao digitar a quantidade
-            quantidadeCache: 1,         // Guarda a quantidade digitada
+            produtoSelecionadoCache: '',
+            quantidadeCache: 1,
             pedidosGlobais: [],
             mesas: []
         };
@@ -87,6 +90,7 @@
 
             for (var k = 0; k < estado.pedidosGlobais.length; k++) {
                 var p = estado.pedidosGlobais[k];
+                if (!p || !p.mesa) continue;
                 var baseId = String(p.mesa).split('.')[0];
                 var mesaObj = estado.mesas.find(function(m) { return m.id == baseId; });
 
@@ -98,7 +102,7 @@
                         mesaObj.status = 'ocupada';
                         mesaObj.idExibicao = p.mesa;
                         
-                        var prodCard = CARDAPIO.find(function(c) { return c.nome.toLowerCase() === String(p.produto).toLowerCase(); });
+                        var prodCard = CARDAPIO.find(function(c) { return c.nome && c.nome.toLowerCase() === String(p.produto).toLowerCase(); });
                         var precoUnit = prodCard ? prodCard.preco : (p.preco || 0);
 
                         mesaObj.itens.push({
@@ -122,10 +126,12 @@
         }
 
         function capturarValoresFormulario() {
-            var sel = document.getElementById('select-produto');
-            var qtd = document.getElementById('input-qtd');
-            if (sel) estado.produtoSelecionadoCache = sel.value;
-            if (qtd) estado.quantidadeCache = qtd.value;
+            try {
+                var sel = document.getElementById('select-produto');
+                var qtd = document.getElementById('input-qtd');
+                if (sel) estado.produtoSelecionadoCache = sel.value;
+                if (qtd) estado.quantidadeCache = qtd.value;
+            } catch (err) {}
         }
 
         function sincronizar() {
@@ -137,53 +143,4 @@
                         if (data.produtos && data.produtos.length > 0) {
                             CARDAPIO = data.produtos;
                         }
-                        if (data.pedidos) {
-                            for (var i = 0; i < data.pedidos.length; i++) {
-                                if (estado.pedidosGlobais[i] && estado.pedidosGlobais[i].statusPreparo) {
-                                    data.pedidos[i].statusPreparo = estado.pedidosGlobais[i].statusPreparo;
-                                }
-                            }
-                            estado.pedidosGlobais = data.pedidos;
-                            processarPedidos();
-                        }
-                        renderizar();
-                    }
-                })
-                .catch(function(e) { console.log("Erro na rede:", e); renderizar(); });
-        }
-
-        function mudarAba(aba) {
-            estado.abaAtiva = aba;
-            if (aba === 'caixa') {
-                estado.mesaSelecionadaId = null;
-            }
-            
-            var btnCaixa = document.getElementById('btn-aba-caixa');
-            var btnCozinha = document.getElementById('btn-aba-cozinha');
-            var btnBar = document.getElementById('btn-aba-bar');
-
-            if (btnCaixa) btnCaixa.className = "btn-tab " + (aba === 'caixa' ? 'active-caixa' : '');
-            if (btnCozinha) btnCozinha.className = "btn-tab " + (aba === 'cozinha' ? 'active-cozinha' : '');
-            if (btnBar) btnBar.className = "btn-tab " + (aba === 'bar' ? 'active-bar' : '');
-            
-            renderizar();
-        }
-
-        function selecionarMesa(id) {
-            estado.mesaSelecionadaId = id;
-            estado.produtoSelecionadoCache = '';
-            estado.quantidadeCache = 1;
-            renderizar();
-        }
-
-        function adicionarItem() {
-            capturarValoresFormulario();
-            if (!estado.mesaSelecionadaId) return;
-            
-            var prod = CARDAPIO.find(function(p) { return p.nome == estado.produtoSelecionadoCache; });
-            if (!prod) {
-                alert("Selecione um produto válido!");
-                return;
-            }
-
-            var qtd = Number(estado.quantidade
+                        if (data.pedidos
