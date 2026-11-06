@@ -87,7 +87,7 @@
                         idUnico: p.id,
                         nome: p.produto,
                         preco: Number(p.preco || 0),
-                        tipo: p.tipo || 'bebida',
+                        tipo: (p.tipo || 'bebida').toLowerCase(),
                         qtd: Number(p.qtd || 1),
                         obs: p.obs || '',
                         statusPreparo: p.status || 'pendente'
@@ -142,7 +142,7 @@
                 produto: prod.nome, 
                 qtd: qtd, 
                 preco: prod.preco, 
-                tipo: prod.tipo, 
+                tipo: prod.tipo || 'bebida', 
                 obs: obs, 
                 status: 'pendente' 
             };
@@ -265,13 +265,16 @@
                     lateral +
                 '</div>';
             } else {
-                var tipo = estado.abaAtiva === 'cozinha' ? 'petisco' : 'bebida';
+                // Cozinha exibe itens de petisco/comida, Bar exibe bebidas
+                var ehCozinha = (estado.abaAtiva === 'cozinha');
                 var lista = [];
                 for (var x = 0; x < estado.mesas.length; x++) {
                     var mesaObj = estado.mesas[x];
                     var itensMesa = mesaObj.itens || [];
                     for (var y = 0; y < itensMesa.length; y++) {
-                        if (itensMesa[y].tipo === tipo) {
+                        var t = (itensMesa[y].tipo || '').toLowerCase();
+                        var matchCozinha = t.includes('petisco') || t.includes('comida') || t.includes('cozinha');
+                        if ((ehCozinha && matchCozinha) || (!ehCozinha && !matchCozinha)) {
                             lista.push({
                                 idUnico: itensMesa[y].idUnico,
                                 nome: itensMesa[y].nome,
@@ -300,12 +303,11 @@
                     }
                 }
 
-                var titulo = estado.abaAtiva === 'cozinha' ? '🍳 Cozinha (Petiscos)' : '🍻 Bar (Bebidas)';
+                var titulo = ehCozinha ? '🍳 Cozinha (Petiscos / Comidas)' : '🍻 Bar (Bebidas)';
                 main.innerHTML = '<div><h2 style="margin-bottom: 1rem; color:#000;">' + titulo + '</h2><div class="kds-grid">' + kdsHtml + '</div></div>';
             }
         }
 
-        // Garante a renderização imediata com os dados locais e depois sincroniza com a nuvem
         renderizar();
         sincronizar();
         setInterval(sincronizar, 3000);
