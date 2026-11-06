@@ -33,8 +33,15 @@
         .kds-grid { display: grid; grid-template-columns: repeat(1, 1fr); gap: 1rem; }
         @media(min-width: 768px) { .kds-grid { grid-template-columns: repeat(2, 1fr); } }
         @media(min-width: 1024px) { .kds-grid { grid-template-columns: repeat(4, 1fr); } }
-        .kds-card { padding: 1rem; border-radius: 0.75rem; border: 2px solid #b91c1c; cursor: pointer; display: flex; flex-direction: column; justify-content: space-between; height: 11rem; background: #ef4444; color: #000; }
-        .badge { padding: 0.125rem 0.5rem; border-radius: 0.25rem; font-size: 0.75rem; font-weight: bold; background: #facc15; color: #000; }
+        
+        /* Cores dos Estados KDS */
+        .kds-card { padding: 1rem; border-radius: 0.75rem; border: 2px solid #991b1b; cursor: pointer; display: flex; flex-direction: column; justify-content: space-between; height: 12rem; background: #f472b6; color: #000; } /* pendente = rosa */
+        .kds-card.preparando { background: #f97316; } /* preparando = laranja */
+        .kds-card.pronto { background: #4ade80; } /* pronto = verde */
+        .kds-card.entregue { background: #facc15; } /* entregue = amarelo */
+
+        .badge { padding: 0.125rem 0.5rem; border-radius: 0.25rem; font-size: 0.75rem; font-weight: bold; background: #fff; color: #000; }
+        .btn-acao-entregue { background: #fff; border: 2px solid #000; border-radius: 0.4rem; padding: 0.3rem 0.5rem; font-size: 0.75rem; font-weight: bold; color: #000; text-align: center; }
         .sync-status { font-size: 0.75rem; font-weight: bold; background: #4ade80; padding: 0.25rem 0.5rem; border-radius: 0.25rem; border: 1px solid #000; color: #000; }
     </style>
 </head>
@@ -57,10 +64,7 @@
     <script>
         var API_URL = "https://script.google.com/macros/s/AKfycbwTl5W2f8Ta8oXRXWwW0uWze1IpDwBmXpwgeW7wQxBDUJ_bo09NwzKaMkrwIaJubG_3/exec";
 
-        var CARDAPIO = [
-            { nome: "Carregando cardápio...", estoque: 0, preco: 0, tipo: "bar" }
-        ];
-        
+        var CARDAPIO = [];
         var estado = {
             abaAtiva: 'caixa',
             mesaSelecionadaId: null,
@@ -93,9 +97,11 @@
                         mesaObj.status = 'ocupada';
                         mesaObj.idExibicao = p.mesa;
                         mesaObj.itens.push({
+                            idUnico: p.id || k,
                             produto: p.produto,
                             qnt: Number(p.qnt || 1),
-                            tipo: p.tipo || 'bar'
+                            tipo: p.tipo || 'bar',
+                            statusPreparo: p.statusPreparo || 'pendente'
                         });
                     }
                 }
@@ -124,11 +130,7 @@
                         renderizar();
                     }
                 })
-                .catch(function(e) {
-                    console.log("Erro na sincronização:", e);
-                    // Garante que renderiza mesmo se a rede falhar
-                    renderizar();
-                });
+                .catch(function(e) { console.log("Erro na rede:", e); renderizar(); });
         }
 
         function mudarAba(aba) {
@@ -178,7 +180,8 @@
                 produto: prod.nome, 
                 qnt: qtd,
                 tipo: prod.tipo || 'bar',
-                status: 'pendente'
+                status: 'pendente',
+                statusPreparo: 'pendente'
             };
 
             estado.pedidosGlobais.push(novo);
@@ -193,6 +196,48 @@
             }).then(function() {
                 setTimeout(sincronizar, 1000);
             });
+        }
+
+        // 1 clique = preparando (laranja) | 2 cliques = pronto (verde)
+        var clickTimer = null;
+        function lidarComCliqueCard(produtoNome, mesaId) {
+            if (clickTimer !== null) {
+                clearTimeout(clickTimer);
+                clickTimer = null;
+                // Segundo clique: muda para PRONTO (verde)
+                mudarEstadoPedido(produtoNome, mesaId, 'pronto');
+            } else {
+                clickTimer = setTimeout(function() {
+                    clickTimer = null;
+                    // Primeiro clique único: muda para PREPARANDO (laranja) ou reinicia ciclo se já estiver pronto/entregue
+                    for (var i = 0; i < estado.pedidosGlobais.length; i++) {
+                        var p = estado.pedidosGlobais[i];
+                        if (p.mesa == mesaId && p.produto === produtoNome && p.status !== 'fechado') {
+                            var atual = p.statusPreparo || 'pendente';
+                            if (atual === 'pendente') {
+                                p.statusPreparo = 'preparando';
+                            } else {
+                                p.statusPreparo = 'pendente';
+                            }
+                            break;
+                        }
+                    }
+                    processarPedidos();
+                    renderizar();
+                }, 250); // espera 250ms para ver se haverá duplo clique
+            }
+        }
+
+        function mudarEstadoPedido(produtoNome, mesaId, novoEstado) {
+            for (var i = 0; i < estado.pedidosGlobais.length; i++) {
+                var p = estado.pedidosGlobais[i];
+                if (p.mesa == mesaId && p.produto === produtoNome && p.status !== 'fechado') {
+                    p.statusPreparo = novoEstado;
+                    break;
+                }
+            }
+            processarPedidos();
+            renderizar();
         }
 
         function fecharMesa(id) {
@@ -248,7 +293,8 @@
                         } else {
                             for (var j = 0; j < mesaSel.itens.length; j++) {
                                 var item = mesaSel.itens[j];
-                                listaHtml += '<div class="item-row"><div><strong>' + item.qnt + 'x ' + item.produto + '</strong></div></div>';
+                                var stPreparo = item.statusPreparo || 'pendente';
+                                listaHtml += '<div class="item-row"><div><strong>' + item.qnt + 'x ' + item.produto + '</strong><br><small>Status: ' + stPreparo.toUpperCase() + '</small></div></div>';
                             }
                         }
 
@@ -317,7 +363,8 @@
                                     itensKDS.push({
                                         mesa: mesaObj.idExibicao || mesaObj.id,
                                         produto: itemMesa.produto,
-                                        qnt: itemMesa.qnt
+                                        qnt: itemMesa.qnt,
+                                        statusPreparo: itemMesa.statusPreparo || 'pendente'
                                     });
                                 }
                             }
@@ -330,10 +377,15 @@
                     } else {
                         for (var z = 0; z < itensKDS.length; z++) {
                             var kItem = itensKDS[z];
-                            kdsHtml += '<div class="kds-card" style="background: #f87171;">' +
-                                '<div style="display: flex; justify-content: space-between;"><span class="badge">Mesa ' + kItem.mesa + '</span></div>' +
+                            var classePreparo = kItem.statusPreparo; // 'pendente', 'preparando', 'pronto', 'entregue'
+                            
+                            kdsHtml += '<div class="kds-card ' + classePreparo + '" onclick="lidarComCliqueCard(\'' + kItem.produto + '\', \'' + kItem.mesa + '\')">' +
+                                '<div style="display: flex; justify-content: space-between;"><span class="badge">Mesa ' + kItem.mesa + '</span><span style="font-size:0.75rem; font-weight:bold;">' + kItem.statusPreparo.toUpperCase() + '</span></div>' +
                                 '<div style="font-size: 1.2rem; font-weight: bold;">' + kItem.qnt + 'x ' + kItem.produto + '</div>' +
-                                '<div style="font-size: 0.75rem; text-align: center;">Pendente</div>' +
+                                '<div style="display: flex; justify-content: space-between; align-items: center; margin-top: 0.5rem;">' +
+                                    '<span style="font-size: 0.65rem; font-weight: bold;">1x Laranja | 2x Verde</span>' +
+                                    '<button class="btn-acao-entregue" onclick="event.stopPropagation(); mudarEstadoPedido(\'' + kItem.produto + '\', \'' + kItem.mesa + '\', \'entregue\')">Marcar Entregue</button>' +
+                                '</div>' +
                             '</div>';
                         }
                     }
@@ -346,9 +398,6 @@
             }
         }
 
-        // Desenha imediatamente ao abrir a página
-        renderizar();
-        // Sincroniza com a planilha em segundo plano
         sincronizar();
         setInterval(sincronizar, 5000);
     </script>
