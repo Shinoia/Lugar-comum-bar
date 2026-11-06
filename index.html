@@ -100,6 +100,21 @@
             return base + '|' + n;
         }
 
+        function itemEhCozinha(it) {
+            var t = String(it.tipo || 'bar').toLowerCase();
+            return t.indexOf('cozinha') >= 0 || t.indexOf('petisco') >= 0 || t.indexOf('comida') >= 0;
+        }
+        // cor do grupo (bar ou cozinha) da mesa: pronto > preparando > pendente > entregue; branco = sem itens
+        function corGrupo(itens, cozinha) {
+            var sts = itens.filter(function(it) { return itemEhCozinha(it) === cozinha; })
+                           .map(function(it) { return it.statusPreparo || 'pendente'; });
+            if (sts.length === 0) return '#fff';
+            return corStatus(sts.indexOf('pronto') >= 0 ? 'pronto' : sts.indexOf('preparando') >= 0 ? 'preparando' : sts.indexOf('pendente') >= 0 ? 'pendente' : 'entregue');
+        }
+        function bolinha(rotulo, cor) {
+            return '<span style="background:' + cor + '; border: 2px solid #000; border-radius: 999px; padding: 0 0.4rem; font-size: 0.65rem; font-weight: bold; color: #000; display: inline-block; line-height: 1.1rem; margin-left: 0.25rem;">' + rotulo + '</span>';
+        }
+
         function processarPedidos() {
             try {
                 for (var i = 0; i < estado.mesas.length; i++) {
@@ -263,6 +278,15 @@
             var base = estado.pedidosGlobais.filter(function(x) { return x.status !== 'fechado' && String(x.mesa) === String(novo.mesa) && x.produto === novo.produto; }).length;
             estado.pendentes.push({ pedido: novo, base: base, t: Date.now() });
             estado.pedidosGlobais.push(novo);
+
+            // volta o formulário ao padrão: primeiro produto da lista e quantidade 1
+            estado.produtoSelecionadoCache = CARDAPIO.length > 0 ? CARDAPIO[0].nome : '';
+            estado.quantidadeCache = 1;
+            var selForm = document.getElementById('select-produto');
+            var qtdForm = document.getElementById('input-qtd');
+            if (selForm) { selForm.selectedIndex = 0; if (CARDAPIO.length > 0) selForm.value = CARDAPIO[0].nome; }
+            if (qtdForm) qtdForm.value = 1;
+
             processarPedidos();
             renderizar();
 
@@ -432,10 +456,10 @@
                         var textoStatus = m.status === 'ocupada'
                             ? '<strong style="font-size: 1.1rem;">' + totalMesa.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) + '</strong><br>' + m.itens.length + ' itens'
                             : 'Livre';
-                        var corMesa = '#fff';
+                        var corBar = '#fff', corCoz = '#fff';
                         if (m.status === 'ocupada') {
-                            var sts = m.itens.map(function(it) { return it.statusPreparo; });
-                            corMesa = corStatus(sts.indexOf('pronto') >= 0 ? 'pronto' : sts.indexOf('preparando') >= 0 ? 'preparando' : sts.indexOf('pendente') >= 0 ? 'pendente' : 'entregue');
+                            corBar = corGrupo(m.itens, false);
+                            corCoz = corGrupo(m.itens, true);
                         }
                         var rotuloMesa = m.idExibicao || m.id;
                         if (m.status === 'livre' && m.contadorFehamentos > 0) {
@@ -443,7 +467,7 @@
                         }
 
                         mesasHtml += '<div class="mesa-card ' + classeOcupada + ' ' + classeSelecionada + '" onclick="selecionarMesa(' + m.id + ')">' +
-                            '<div style="display: flex; justify-content: space-between;"><strong>Mesa ' + rotuloMesa + '</strong><span style="background:' + corMesa + '; border: 2px solid #000; border-radius: 999px; width: 1rem; height: 1rem; display: inline-block;"></span></div>' +
+                            '<div style="display: flex; justify-content: space-between;"><strong>Mesa ' + rotuloMesa + '</strong><span style="white-space: nowrap;">' + bolinha('bar', corBar) + bolinha('coz', corCoz) + '</span></div>' +
                             '<div><div style="font-size: 0.75rem;">' + textoStatus + '</div></div>' +
                         '</div>';
                     }
