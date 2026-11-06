@@ -92,23 +92,13 @@
             }
         }
 
-        function carregarCardapioCache() {
+        function sincronizar() {
+            // Força a limpeza do cache antigo para garantir leitura imediata da aba Produtos
             var cached = localStorage.getItem('cardapio_lugar_comum');
             var cachedTime = localStorage.getItem('cardapio_tempo');
             var agora = new Date().getTime();
 
-            // Atualiza o cardápio da planilha apenas a cada 1 hora (3600000 ms) ou se estiver vazio
-            if (!cached || !cachedTime || (agora - cachedTime > 3600000)) {
-                return false;
-            } else {
-                CARDAPIO = JSON.parse(cached);
-                return true;
-            }
-        }
-
-        function sincronizar() {
-            var temCache = carregarCardapioCache();
-            var urlFetch = temCache ? API_URL + "?apenas_pedidos=true" : API_URL;
+            var urlFetch = (cached && cachedTime && (agora - cachedTime < 3600000)) ? (API_URL + "?apenas_pedidos=true") : API_URL;
 
             fetch(urlFetch)
                 .then(function(res) { return res.json(); })
@@ -117,7 +107,9 @@
                         if (data.produtos && data.produtos.length > 0) {
                             CARDAPIO = data.produtos;
                             localStorage.setItem('cardapio_lugar_comum', JSON.stringify(data.produtos));
-                            localStorage.setItem('cardapio_tempo', new Date().getTime());
+                            localStorage.setItem('cardapio_tempo', agora);
+                        } else if (!CARDAPIO.length && cached) {
+                            CARDAPIO = JSON.parse(cached);
                         }
                         if (data.pedidos) {
                             estado.pedidosGlobais = data.pedidos;
@@ -126,7 +118,12 @@
                         renderizar();
                     }
                 })
-                .catch(function(e) { console.log("A usar dados locais."); });
+                .catch(function(e) { 
+                    console.log("Erro na rede, usando cache local.");
+                    var cached = localStorage.getItem('cardapio_lugar_comum');
+                    if (cached) CARDAPIO = JSON.parse(cached);
+                    renderizar();
+                });
         }
 
         function mudarAba(aba) {
@@ -322,8 +319,6 @@
             }
         }
 
-        // Carrega o cache inicial e sincroniza em tempo real
-        carregarCardapioCache();
         renderizar();
         sincronizar();
         setInterval(sincronizar, 3000);
