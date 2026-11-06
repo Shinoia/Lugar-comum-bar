@@ -34,8 +34,6 @@
         @media(min-width: 768px) { .kds-grid { grid-template-columns: repeat(2, 1fr); } }
         @media(min-width: 1024px) { .kds-grid { grid-template-columns: repeat(4, 1fr); } }
         .kds-card { padding: 1rem; border-radius: 0.75rem; border: 2px solid #b91c1c; cursor: pointer; display: flex; flex-direction: column; justify-content: space-between; height: 11rem; background: #ef4444; color: #000; }
-        .kds-card.preparando { background: #f97316; }
-        .kds-card.pronto { background: #4ade80; }
         .badge { padding: 0.125rem 0.5rem; border-radius: 0.25rem; font-size: 0.75rem; font-weight: bold; background: #facc15; color: #000; }
         .sync-status { font-size: 0.75rem; font-weight: bold; background: #4ade80; padding: 0.25rem 0.5rem; border-radius: 0.25rem; border: 1px solid #000; color: #000; }
     </style>
@@ -47,7 +45,7 @@
             <span id="sync-indicator" class="sync-status">Sistema Ativo</span>
         </div>
         <div class="nav-buttons">
-            <button id="btn-aba-caixa" class="btn-tab active-caixa" onclick="mudarAba('caixa')">🧮 Caixa / Mesas (16)</button>
+            <button id="btn-aba-caixa" class="btn-tab active-caixa" onclick="mudarAba('caixa')">🧮 Caixa / Mesas</button>
             <button id="btn-aba-cozinha" class="btn-tab" onclick="mudarAba('cozinha')">🍳 Cozinha</button>
             <button id="btn-aba-bar" class="btn-tab" onclick="mudarAba('bar')">🍻 Bar</button>
             <button class="btn-dia" onclick="finalizarDia()">🏁 Finalizar Dia</button>
@@ -57,7 +55,6 @@
     <main id="app-conteudo"></main>
 
     <script>
-        // Novo link do Web App do Google Apps Script
         var API_URL = "https://script.google.com/macros/s/AKfycbwTl5W2f8Ta8oXRXWwW0uWze1IpDwBmXpwgeW7wQxBDUJ_bo09NwzKaMkrwIaJubG_3/exec";
 
         var CARDAPIO = [];
@@ -69,4 +66,62 @@
         };
 
         for (var i = 1; i <= 16; i++) {
-            estado.
+            estado.mesas.push({ id: i, status: 'livre', itens: [], contadorFehamentos: 0 });
+        }
+
+        function processarPedidos() {
+            for (var i = 0; i < estado.mesas.length; i++) {
+                estado.mesas[i].itens = [];
+                estado.mesas[i].status = 'livre';
+            }
+
+            var contagemFechamentos = {};
+
+            for (var k = 0; k < estado.pedidosGlobais.length; k++) {
+                var p = estado.pedidosGlobais[k];
+                var baseId = String(p.mesa).split('.')[0];
+                var mesaObj = estado.mesas.find(function(m) { return m.id == baseId; });
+
+                if (mesaObj) {
+                    if (p.status === 'fechado') {
+                        contagemFechamentos[baseId] = (contagemFechamentos[baseId] || 0) + 1;
+                        mesaObj.status = 'livre';
+                    } else {
+                        mesaObj.status = 'ocupada';
+                        mesaObj.idExibicao = p.mesa;
+                        mesaObj.itens.push({
+                            produto: p.produto,
+                            qnt: Number(p.qnt || 1),
+                            tipo: p.tipo || 'bar'
+                        });
+                    }
+                }
+            }
+
+            for (var mId in contagemFechamentos) {
+                var mObj = estado.mesas.find(function(m) { return m.id == mId; });
+                if (mObj && mObj.status === 'livre') {
+                    mObj.contadorFehamentos = contagemFechamentos[mId];
+                }
+            }
+        }
+
+        function sincronizar() {
+            fetch(API_URL)
+                .then(function(res) { return res.json(); })
+                .then(function(data) {
+                    if (data) {
+                        if (data.produtos && data.produtos.length > 0) {
+                            CARDAPIO = data.produtos;
+                        }
+                        if (data.pedidos) {
+                            estado.pedidosGlobais = data.pedidos;
+                            processarPedidos();
+                        }
+                        renderizar();
+                    }
+                })
+                .catch(function(e) { console.log("Erro na rede:", e); renderizar(); });
+        }
+
+        function mudarAba(
