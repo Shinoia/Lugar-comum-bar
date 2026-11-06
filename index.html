@@ -57,11 +57,7 @@
     <script>
         var API_URL = "https://script.google.com/macros/s/AKfycbzaENk_6tYRkcfnq6ZyjTCoSEGyPOPtzDiiKc_KNUGncAhyZU122shAM5QdeWaAYEOM/exec";
 
-        var CARDAPIO = [
-            { nome: "kariri", estoque: 100, preco: 23.00, tipo: "bebida" },
-            { nome: "Refrigerante", estoque: 100, preco: 12.00, tipo: "bebida" }
-        ];
-
+        var CARDAPIO = [];
         var estado = {
             abaAtiva: 'caixa',
             mesaSelecionadaId: null,
@@ -87,7 +83,7 @@
                         idUnico: p.id,
                         nome: p.produto,
                         preco: Number(p.preco || 0),
-                        tipo: (p.tipo || 'bebida').toLowerCase(),
+                        tipo: (p.tipo || 'bar').toLowerCase(),
                         qtd: Number(p.qtd || 1),
                         obs: p.obs || '',
                         statusPreparo: p.status || 'pendente'
@@ -96,13 +92,32 @@
             }
         }
 
+        function carregarCardapioCache() {
+            var cached = localStorage.getItem('cardapio_lugar_comum');
+            var cachedTime = localStorage.getItem('cardapio_tempo');
+            var agora = new Date().getTime();
+
+            // Atualiza o cardápio da planilha apenas a cada 1 hora (3600000 ms) ou se estiver vazio
+            if (!cached || !cachedTime || (agora - cachedTime > 3600000)) {
+                return false;
+            } else {
+                CARDAPIO = JSON.parse(cached);
+                return true;
+            }
+        }
+
         function sincronizar() {
-            fetch(API_URL)
+            var temCache = carregarCardapioCache();
+            var urlFetch = temCache ? API_URL + "?apenas_pedidos=true" : API_URL;
+
+            fetch(urlFetch)
                 .then(function(res) { return res.json(); })
                 .then(function(data) {
                     if (data) {
                         if (data.produtos && data.produtos.length > 0) {
                             CARDAPIO = data.produtos;
+                            localStorage.setItem('cardapio_lugar_comum', JSON.stringify(data.produtos));
+                            localStorage.setItem('cardapio_tempo', new Date().getTime());
                         }
                         if (data.pedidos) {
                             estado.pedidosGlobais = data.pedidos;
@@ -142,7 +157,7 @@
                 produto: prod.nome, 
                 qtd: qtd, 
                 preco: prod.preco, 
-                tipo: prod.tipo || 'bebida', 
+                tipo: prod.tipo || 'bar', 
                 obs: obs, 
                 status: 'pendente' 
             };
@@ -265,7 +280,6 @@
                     lateral +
                 '</div>';
             } else {
-                // Cozinha exibe itens de petisco/comida, Bar exibe bebidas
                 var ehCozinha = (estado.abaAtiva === 'cozinha');
                 var lista = [];
                 for (var x = 0; x < estado.mesas.length; x++) {
@@ -273,7 +287,7 @@
                     var itensMesa = mesaObj.itens || [];
                     for (var y = 0; y < itensMesa.length; y++) {
                         var t = (itensMesa[y].tipo || '').toLowerCase();
-                        var matchCozinha = t.includes('petisco') || t.includes('comida') || t.includes('cozinha');
+                        var matchCozinha = t.includes('cozinha') || t.includes('petisco') || t.includes('comida');
                         if ((ehCozinha && matchCozinha) || (!ehCozinha && !matchCozinha)) {
                             lista.push({
                                 idUnico: itensMesa[y].idUnico,
@@ -303,11 +317,13 @@
                     }
                 }
 
-                var titulo = ehCozinha ? '🍳 Cozinha (Petiscos / Comidas)' : '🍻 Bar (Bebidas)';
+                var titulo = ehCozinha ? '🍳 Cozinha' : '🍻 Bar';
                 main.innerHTML = '<div><h2 style="margin-bottom: 1rem; color:#000;">' + titulo + '</h2><div class="kds-grid">' + kdsHtml + '</div></div>';
             }
         }
 
+        // Carrega o cache inicial e sincroniza em tempo real
+        carregarCardapioCache();
         renderizar();
         sincronizar();
         setInterval(sincronizar, 3000);
