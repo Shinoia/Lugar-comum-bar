@@ -63,14 +63,17 @@
     <script>
         var API_URL = "https://script.google.com/macros/s/AKfycbwTl5W2f8Ta8oXRXWwW0uWze1IpDwBmXpwgeW7wQxBDUJ_bo09NwzKaMkrwIaJubG_3/exec";
 
+        // Cardápio de segurança preenchido para garantir funcionamento imediato
         var CARDAPIO = [
-            { nome: "Carregando cardápio...", preco: 0, estoque: 0, tipo: "bar" }
+            { nome: "Refrigerante", preco: 6.00, estoque: 50, tipo: "bar" },
+            { nome: "Kariri", preco: 10.00, estoque: 30, tipo: "bar" },
+            { nome: "Conserva", preco: 15.00, estoque: 20, tipo: "cozinha" }
         ];
         
         var estado = {
             abaAtiva: 'caixa',
             mesaSelecionadaId: null,
-            produtoSelecionadoCache: '',
+            produtoSelecionadoCache: 'Refrigerante',
             quantidadeCache: 1,
             pedidosGlobais: [],
             mesas: []
@@ -81,47 +84,51 @@
         }
 
         function processarPedidos() {
-            for (var i = 0; i < estado.mesas.length; i++) {
-                estado.mesas[i].itens = [];
-                estado.mesas[i].status = 'livre';
-            }
+            try {
+                for (var i = 0; i < estado.mesas.length; i++) {
+                    estado.mesas[i].itens = [];
+                    estado.mesas[i].status = 'livre';
+                }
 
-            var contagemFechamentos = {};
+                var contagemFechamentos = {};
 
-            for (var k = 0; k < estado.pedidosGlobais.length; k++) {
-                var p = estado.pedidosGlobais[k];
-                if (!p || !p.mesa) continue;
-                var baseId = String(p.mesa).split('.')[0];
-                var mesaObj = estado.mesas.find(function(m) { return m.id == baseId; });
+                for (var k = 0; k < estado.pedidosGlobais.length; k++) {
+                    var p = estado.pedidosGlobais[k];
+                    if (!p || !p.mesa) continue;
+                    var baseId = String(p.mesa).split('.')[0];
+                    var mesaObj = estado.mesas.find(function(m) { return m.id == baseId; });
 
-                if (mesaObj) {
-                    if (p.status === 'fechado') {
-                        contagemFechamentos[baseId] = (contagemFechamentos[baseId] || 0) + 1;
-                        mesaObj.status = 'livre';
-                    } else {
-                        mesaObj.status = 'ocupada';
-                        mesaObj.idExibicao = p.mesa;
-                        
-                        var prodCard = CARDAPIO.find(function(c) { return c.nome && c.nome.toLowerCase() === String(p.produto).toLowerCase(); });
-                        var precoUnit = prodCard ? prodCard.preco : (p.preco || 0);
+                    if (mesaObj) {
+                        if (p.status === 'fechado') {
+                            contagemFechamentos[baseId] = (contagemFechamentos[baseId] || 0) + 1;
+                            mesaObj.status = 'livre';
+                        } else {
+                            mesaObj.status = 'ocupada';
+                            mesaObj.idExibicao = p.mesa;
+                            
+                            var prodCard = CARDAPIO.find(function(c) { return c.nome && c.nome.toLowerCase() === String(p.produto).toLowerCase(); });
+                            var precoUnit = prodCard ? prodCard.preco : (p.preco || 6.00);
 
-                        mesaObj.itens.push({
-                            idItem: k,
-                            produto: p.produto,
-                            qnt: Number(p.qnt || 1),
-                            preco: precoUnit,
-                            tipo: p.tipo || 'bar',
-                            statusPreparo: p.statusPreparo || 'pendente'
-                        });
+                            mesaObj.itens.push({
+                                idItem: k,
+                                produto: p.produto,
+                                qnt: Number(p.qnt || 1),
+                                preco: precoUnit,
+                                tipo: p.tipo || 'bar',
+                                statusPreparo: p.statusPreparo || 'pendente'
+                            });
+                        }
                     }
                 }
-            }
 
-            for (var mId in contagemFechamentos) {
-                var mObj = estado.mesas.find(function(m) { return m.id == mId; });
-                if (mObj && mObj.status === 'livre') {
-                    mObj.contadorFehamentos = contagemFechamentos[mId];
+                for (var mId in contagemFechamentos) {
+                    var mObj = estado.mesas.find(function(m) { return m.id == mId; });
+                    if (mObj && mObj.status === 'livre') {
+                        mObj.contadorFehamentos = contagemFechamentos[mId];
+                    }
                 }
+            } catch (err) {
+                console.log("Erro ao processar pedidos:", err);
             }
         }
 
@@ -129,8 +136,8 @@
             try {
                 var sel = document.getElementById('select-produto');
                 var qtd = document.getElementById('input-qtd');
-                if (sel) estado.produtoSelecionadoCache = sel.value;
-                if (qtd) estado.quantidadeCache = qtd.value;
+                if (sel && sel.value) estado.produtoSelecionadoCache = sel.value;
+                if (qtd && qtd.value) estado.quantidadeCache = qtd.value;
             } catch (err) {}
         }
 
@@ -143,4 +150,303 @@
                         if (data.produtos && data.produtos.length > 0) {
                             CARDAPIO = data.produtos;
                         }
-                        if (data.pedidos
+                        if (data.pedidos) {
+                            for (var i = 0; i < data.pedidos.length; i++) {
+                                if (estado.pedidosGlobais[i] && estado.pedidosGlobais[i].statusPreparo) {
+                                    data.pedidos[i].statusPreparo = estado.pedidosGlobais[i].statusPreparo;
+                                }
+                            }
+                            estado.pedidosGlobais = data.pedidos;
+                            processarPedidos();
+                        }
+                        renderizar();
+                    }
+                })
+                .catch(function(e) { 
+                    console.log("Aviso de rede (usando dados locais):", e); 
+                    renderizar(); 
+                });
+        }
+
+        function mudarAba(aba) {
+            estado.abaAtiva = aba;
+            if (aba === 'caixa') {
+                estado.mesaSelecionadaId = null;
+            }
+            
+            var btnCaixa = document.getElementById('btn-aba-caixa');
+            var btnCozinha = document.getElementById('btn-aba-cozinha');
+            var btnBar = document.getElementById('btn-aba-bar');
+
+            if (btnCaixa) btnCaixa.className = "btn-tab " + (aba === 'caixa' ? 'active-caixa' : '');
+            if (btnCozinha) btnCozinha.className = "btn-tab " + (aba === 'cozinha' ? 'active-cozinha' : '');
+            if (btnBar) btnBar.className = "btn-tab " + (aba === 'bar' ? 'active-bar' : '');
+            
+            renderizar();
+        }
+
+        function selecionarMesa(id) {
+            estado.mesaSelecionadaId = id;
+            if (CARDAPIO.length > 0 && !estado.produtoSelecionadoCache) {
+                estado.produtoSelecionadoCache = CARDAPIO[0].nome;
+            }
+            estado.quantidadeCache = 1;
+            renderizar();
+        }
+
+        function adicionarItem() {
+            capturarValoresFormulario();
+            if (!estado.mesaSelecionadaId) return;
+            
+            var prod = CARDAPIO.find(function(p) { return p.nome == estado.produtoSelecionadoCache; });
+            if (!prod) {
+                prod = CARDAPIO[0];
+            }
+
+            var qtd = Number(estado.quantidadeCache) || 1;
+            var mesaObj = estado.mesas.find(function(m) { return m.id == estado.mesaSelecionadaId; });
+            
+            var idMesaFinal = mesaObj.id;
+            if (mesaObj.status === 'livre' && mesaObj.contadorFehamentos > 0) {
+                idMesaFinal = mesaObj.id + "." + mesaObj.contadorFehamentos;
+            } else if (mesaObj.status === 'ocupada' && mesaObj.idExibicao) {
+                idMesaFinal = mesaObj.idExibicao;
+            }
+
+            var novo = { 
+                mesa: idMesaFinal, 
+                produto: prod.nome, 
+                qnt: qtd,
+                preco: prod.preco,
+                tipo: prod.tipo || 'bar',
+                status: 'pendente',
+                statusPreparo: 'pendente'
+            };
+
+            estado.pedidosGlobais.push(novo);
+            processarPedidos();
+            renderizar();
+
+            fetch(API_URL, {
+                method: 'POST',
+                mode: 'no-cors',
+                headers: { 'Content-Type': 'text/plain' },
+                body: JSON.stringify(novo)
+            }).then(function() {
+                setTimeout(sincronizar, 1000);
+            });
+        }
+
+        var clickTimers = {};
+        function lidarComCliqueCard(idItem) {
+            if (clickTimers[idItem]) {
+                clearTimeout(clickTimers[idItem]);
+                clickTimers[idItem] = null;
+                mudarEstadoPorId(idItem, 'pronto');
+            } else {
+                clickTimers[idItem] = setTimeout(function() {
+                    clickTimers[idItem] = null;
+                    var p = estado.pedidosGlobais[idItem];
+                    if (p && p.status !== 'fechado') {
+                        var atual = p.statusPreparo || 'pendente';
+                        if (atual === 'pendente') {
+                            p.statusPreparo = 'preparando';
+                        } else {
+                            p.statusPreparo = 'pendente';
+                        }
+                        processarPedidos();
+                        renderizar();
+                    }
+                }, 250);
+            }
+        }
+
+        function mudarEstadoPorId(idItem, novoEstado) {
+            var p = estado.pedidosGlobais[idItem];
+            if (p && p.status !== 'fechado') {
+                p.statusPreparo = novoEstado;
+                processarPedidos();
+                renderizar();
+            }
+        }
+
+        function fecharMesa(id) {
+            var mesaObj = estado.mesas.find(function(m) { return m.id == id; });
+            var idAlvo = mesaObj.idExibicao || id;
+            if (!confirm("Fechar Mesa " + idAlvo + "?")) return;
+
+            fetch(API_URL, {
+                method: 'POST',
+                mode: 'no-cors',
+                headers: { 'Content-Type': 'text/plain' },
+                body: JSON.stringify({ acao: 'fechar_mesa', mesa: idAlvo })
+            }).then(function() {
+                setTimeout(function() {
+                    estado.mesaSelecionadaId = null;
+                    sincronizar();
+                }, 1000);
+            });
+        }
+
+        function finalizarDia() {
+            var mesasOcupadas = estado.mesas.filter(function(m) { return m.status === 'ocupada'; });
+            if (mesasOcupadas.length > 0) {
+                alert("Não é possível finalizar o dia! Ainda existem mesas abertas/ocupadas.");
+                return;
+            }
+            if (!confirm("Deseja realmente finalizar o dia, ordenar a planilha por mesas e consolidar?")) return;
+
+            fetch(API_URL, {
+                method: 'POST',
+                mode: 'no-cors',
+                headers: { 'Content-Type': 'text/plain' },
+                body: JSON.stringify({ acao: 'finalizar_dia' })
+            }).then(function() {
+                alert("Dia finalizado e pedidos ordenados por mesa com sucesso!");
+                sincronizar();
+            });
+        }
+
+        function renderizar() {
+            try {
+                capturarValoresFormulario();
+                var main = document.getElementById('app-conteudo');
+                if (!main) return;
+
+                if (estado.abaAtiva === 'caixa') {
+                    var mesaSel = estado.mesas.find(function(m) { return m.id === estado.mesaSelecionadaId; });
+                    var lateral = '';
+
+                    if (mesaSel) {
+                        var listaHtml = '';
+                        var valorTotalComanda = 0;
+
+                        if (mesaSel.itens.length === 0) {
+                            listaHtml = '<p style="text-align: center; padding: 1rem;">Nenhum item lançado.</p>';
+                        } else {
+                            for (var j = 0; j < mesaSel.itens.length; j++) {
+                                var item = mesaSel.itens[j];
+                                var stPreparo = item.statusPreparo || 'pendente';
+                                var subtotal = item.qnt * item.preco;
+                                valorTotalComanda += subtotal;
+
+                                listaHtml += '<div class="item-row">' +
+                                    '<div><strong>' + item.qnt + 'x ' + item.produto + '</strong><br>' +
+                                    '<small>Preço: R$ ' + item.preco.toFixed(2) + ' | Subtotal: R$ ' + subtotal.toFixed(2) + '</small><br>' +
+                                    '<span class="badge" style="background:#facc15; margin-top:2px; display:inline-block;">Status: ' + stPreparo.toUpperCase() + '</span></div>' +
+                                '</div>';
+                            }
+                        }
+
+                        var opcoesHtml = '';
+                        for (var c = 0; c < CARDAPIO.length; c++) {
+                            var pItem = CARDAPIO[c];
+                            var selecionadoAttr = (pItem.nome === estado.produtoSelecionadoCache) ? 'selected' : '';
+                            opcoesHtml += '<option value="' + pItem.nome + '" ' + selecionadoAttr + '>' + pItem.nome + ' - R$ ' + Number(pItem.preco).toFixed(2) + '</option>';
+                        }
+
+                        var idExibicaoMesa = mesaSel.idExibicao || mesaSel.id;
+                        if (mesaSel.status === 'livre' && mesaSel.contadorFehamentos > 0) {
+                            idExibicaoMesa = mesaSel.id + "." + mesaSel.contadorFehamentos;
+                        }
+
+                        lateral = '<div class="painel-lateral">' +
+                            '<div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #991b1b; padding-bottom: 0.75rem; margin-bottom: 1rem;">' +
+                                '<h3>Mesa ' + idExibicaoMesa + '</h3>' +
+                                '<button onclick="fecharMesa(' + mesaSel.id + ')" style="background: #f87171; border: 2px solid #000; padding: 0.25rem 0.5rem; border-radius: 0.5rem;">Fechar Conta</button>' +
+                            '</div>' +
+                            '<div style="background: #facc15; border: 2px solid #000; padding: 0.5rem; border-radius: 0.5rem; margin-bottom: 1rem; text-align: center;">' +
+                                '<strong style="font-size: 1rem;">Total Comanda: R$ ' + valorTotalComanda.toFixed(2) + '</strong>' +
+                            '</div>' +
+                            '<div class="form-grupo">' +
+                                '<label style="font-size: 0.75rem;">SELECIONAR PRODUTO</label>' +
+                                '<select id="select-produto">' + opcoesHtml + '</select>' +
+                                '<div style="margin-top: 0.5rem;"><label style="font-size:0.65rem;">Qtd Solicitada:</label><input type="number" id="input-qtd" value="' + estado.quantidadeCache + '" min="1" style="text-align: center;" oninput="estado.quantidadeCache = this.value"></div>' +
+                                '<button onclick="adicionarItem()" class="btn-lancar" style="margin-top:0.5rem;">Lançar Pedido</button>' +
+                            '</div>' +
+                            '<div class="lista-itens">' + listaHtml + '</div>' +
+                        '</div>';
+                    } else {
+                        lateral = '<div class="painel-lateral" style="justify-content: center; align-items: center; text-align: center;"><p>👆 Clique em uma mesa ao lado para gerenciar.</p></div>';
+                    }
+
+                    var mesasHtml = '';
+                    for (var mIdx = 0; mIdx < estado.mesas.length; mIdx++) {
+                        var m = estado.mesas[mIdx];
+                        var classeOcupada = m.status === 'ocupada' ? 'ocupada' : '';
+                        var classeSelecionada = m.id === estado.mesaSelecionadaId ? 'selecionada' : '';
+                        var textoStatus = m.status === 'ocupada' ? m.itens.length + ' itens' : 'Livre';
+                        var rotuloMesa = m.idExibicao || m.id;
+                        if (m.status === 'livre' && m.contadorFehamentos > 0) {
+                            rotuloMesa = m.id + "." + m.contadorFehamentos;
+                        }
+
+                        mesasHtml += '<div class="mesa-card ' + classeOcupada + ' ' + classeSelecionada + '" onclick="selecionarMesa(' + m.id + ')">' +
+                            '<div style="display: flex; justify-content: space-between;"><strong>Mesa ' + rotuloMesa + '</strong><span>●</span></div>' +
+                            '<div><div style="font-size: 0.75rem;">' + textoStatus + '</div></div>' +
+                        '</div>';
+                    }
+
+                    main.innerHTML = '<div class="grid-caixa">' +
+                        '<div><h2 style="margin-bottom: 1rem; color:#000;">Selecione uma Mesa</h2><div class="mesas-grid">' + mesasHtml + '</div></div>' +
+                        lateral +
+                    '</div>';
+                } else {
+                    var ehCozinha = (estado.abaAtiva === 'cozinha');
+                    var itensKDS = [];
+
+                    for (var x = 0; x < estado.mesas.length; x++) {
+                        var mesaObj = estado.mesas[x];
+                        if (mesaObj.status === 'ocupada') {
+                            for (var y = 0; y < mesaObj.itens.length; y++) {
+                                var itemMesa = mesaObj.itens[y];
+                                var tipoItem = (itemMesa.tipo || 'bar').toLowerCase();
+                                var eCozinhaItem = tipoItem.includes('cozinha') || tipoItem.includes('petisco') || tipoItem.includes('comida');
+
+                                if ((ehCozinha && eCozinhaItem) || (!ehCozinha && !eCozinhaItem)) {
+                                    itensKDS.push({
+                                        idItem: itemMesa.idItem,
+                                        mesa: mesaObj.idExibicao || mesaObj.id,
+                                        produto: itemMesa.produto,
+                                        qnt: itemMesa.qnt,
+                                        statusPreparo: itemMesa.statusPreparo || 'pendente'
+                                    });
+                                }
+                            }
+                        }
+                    }
+
+                    var kdsHtml = '';
+                    if (itensKDS.length === 0) {
+                        kdsHtml = '<p style="grid-column: span 4; text-align: center; padding: 3rem; color:#000; font-weight:bold;">Nenhum item pendente no momento.</p>';
+                    } else {
+                        for (var z = 0; z < itensKDS.length; z++) {
+                            var kItem = itensKDS[z];
+                            var classePreparo = kItem.statusPreparo;
+                            
+                            kdsHtml += '<div class="kds-card ' + classePreparo + '" onclick="lidarComCliqueCard(' + kItem.idItem + ')">' +
+                                '<div style="display: flex; justify-content: space-between;"><span class="badge">Mesa ' + kItem.mesa + '</span><span style="font-size:0.75rem; font-weight:bold;">' + kItem.statusPreparo.toUpperCase() + '</span></div>' +
+                                '<div style="font-size: 1.2rem; font-weight: bold;">' + kItem.qnt + 'x ' + kItem.produto + '</div>' +
+                                '<div style="display: flex; justify-content: space-between; align-items: center; margin-top: 0.5rem;">' +
+                                    '<span style="font-size: 0.65rem; font-weight: bold;">1x Laranja | 2x Verde</span>' +
+                                    '<button class="btn-acao-entregue" onclick="event.stopPropagation(); mudarEstadoPorId(' + kItem.idItem + ', \'entregue\')">Marcar Entregue</button>' +
+                                '</div>' +
+                            '</div>';
+                        }
+                    }
+
+                    var tituloPainel = ehCozinha ? '🍳 Cozinha' : '🍻 Bar';
+                    main.innerHTML = '<div><h2 style="margin-bottom: 1rem; color:#000;">' + tituloPainel + '</h2><div class="kds-grid">' + kdsHtml + '</div></div>';
+                }
+            } catch (err) {
+                console.log("Erro crítico no renderizar:", err);
+            }
+        }
+
+        // Executa imediatamente e sincroniza em segundo plano
+        renderizar();
+        sincronizar();
+        setInterval(sincronizar, 5000);
+    </script>
+</body>
+</html>
