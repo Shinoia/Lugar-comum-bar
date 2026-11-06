@@ -88,9 +88,12 @@
                 for (var i = 0; i < estado.mesas.length; i++) {
                     estado.mesas[i].itens = [];
                     estado.mesas[i].status = 'livre';
+                    estado.mesas[i].contadorFehamentos = 0;
+                    estado.mesas[i].idExibicao = null;
                 }
 
                 var contagemFechamentos = {};
+                var fechSets = {};
 
                 for (var k = 0; k < estado.pedidosGlobais.length; k++) {
                     var p = estado.pedidosGlobais[k];
@@ -100,7 +103,9 @@
 
                     if (mesaObj) {
                         if (p.status === 'fechado') {
-                            contagemFechamentos[baseId] = (contagemFechamentos[baseId] || 0) + 1;
+                            fechSets[baseId] = fechSets[baseId] || {};
+                            fechSets[baseId][String(p.tchau)] = true;
+                            contagemFechamentos[baseId] = Object.keys(fechSets[baseId]).length;
                             mesaObj.status = 'livre';
                         } else {
                             mesaObj.status = 'ocupada';
@@ -151,11 +156,6 @@
                             CARDAPIO = data.produtos;
                         }
                         if (data.pedidos) {
-                            for (var i = 0; i < data.pedidos.length; i++) {
-                                if (estado.pedidosGlobais[i] && estado.pedidosGlobais[i].statusPreparo) {
-                                    data.pedidos[i].statusPreparo = estado.pedidosGlobais[i].statusPreparo;
-                                }
-                            }
                             estado.pedidosGlobais = data.pedidos;
                             processarPedidos();
                         }
@@ -249,13 +249,7 @@
                     var p = estado.pedidosGlobais[idItem];
                     if (p && p.status !== 'fechado') {
                         var atual = p.statusPreparo || 'pendente';
-                        if (atual === 'pendente') {
-                            p.statusPreparo = 'preparando';
-                        } else {
-                            p.statusPreparo = 'pendente';
-                        }
-                        processarPedidos();
-                        renderizar();
+                        mudarEstadoPorId(idItem, atual === 'pendente' ? 'preparando' : 'pendente');
                     }
                 }, 250);
             }
@@ -265,6 +259,10 @@
             var p = estado.pedidosGlobais[idItem];
             if (p && p.status !== 'fechado') {
                 p.statusPreparo = novoEstado;
+                if (p.linha) {
+                    fetch(API_URL, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'text/plain' },
+                        body: JSON.stringify({ acao: 'status_preparo', linha: p.linha, produto: p.produto, statusPreparo: novoEstado }) });
+                }
                 processarPedidos();
                 renderizar();
             }
@@ -375,7 +373,11 @@
                         var m = estado.mesas[mIdx];
                         var classeOcupada = m.status === 'ocupada' ? 'ocupada' : '';
                         var classeSelecionada = m.id === estado.mesaSelecionadaId ? 'selecionada' : '';
-                        var textoStatus = m.status === 'ocupada' ? m.itens.length + ' itens' : 'Livre';
+                        var totalMesa = 0;
+                        for (var ti = 0; ti < m.itens.length; ti++) { totalMesa += m.itens[ti].qnt * m.itens[ti].preco; }
+                        var textoStatus = m.status === 'ocupada'
+                            ? '<strong style="font-size: 1.1rem;">' + totalMesa.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) + '</strong><br>' + m.itens.length + ' itens'
+                            : 'Livre';
                         var rotuloMesa = m.idExibicao || m.id;
                         if (m.status === 'livre' && m.contadorFehamentos > 0) {
                             rotuloMesa = m.id + "." + m.contadorFehamentos;
@@ -403,7 +405,7 @@
                                 var tipoItem = (itemMesa.tipo || 'bar').toLowerCase();
                                 var eCozinhaItem = tipoItem.includes('cozinha') || tipoItem.includes('petisco') || tipoItem.includes('comida');
 
-                                if ((ehCozinha && eCozinhaItem) || (!ehCozinha && !eCozinhaItem)) {
+                                if (itemMesa.statusPreparo !== 'entregue' && ((ehCozinha && eCozinhaItem) || (!ehCozinha && !eCozinhaItem))) {
                                     itensKDS.push({
                                         idItem: itemMesa.idItem,
                                         mesa: mesaObj.idExibicao || mesaObj.id,
@@ -428,7 +430,7 @@
                                 '<div style="display: flex; justify-content: space-between;"><span class="badge">Mesa ' + kItem.mesa + '</span><span style="font-size:0.75rem; font-weight:bold;">' + kItem.statusPreparo.toUpperCase() + '</span></div>' +
                                 '<div style="font-size: 1.2rem; font-weight: bold;">' + kItem.qnt + 'x ' + kItem.produto + '</div>' +
                                 '<div style="display: flex; justify-content: space-between; align-items: center; margin-top: 0.5rem;">' +
-                                    '<span style="font-size: 0.65rem; font-weight: bold;">1x Laranja | 2x Verde</span>' +
+                                    '<span style="font-size: 0.65rem; font-weight: bold;">1 toque: preparando | 2 toques: pronto</span>' +
                                     '<button class="btn-acao-entregue" onclick="event.stopPropagation(); mudarEstadoPorId(' + kItem.idItem + ', \'entregue\')">Marcar Entregue</button>' +
                                 '</div>' +
                             '</div>';
