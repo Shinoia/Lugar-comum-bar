@@ -101,6 +101,11 @@
         }
 
         function sincronizar() {
+            // Se houver uma mesa selecionada, não atualiza a tela automaticamente para não apagar o que o utilizador está a digitar
+            if (estado.mesaSelecionadaId !== null && estado.abaAtiva === 'caixa') {
+                return; 
+            }
+
             fetch(API_URL)
                 .then(function(res) { return res.json(); })
                 .then(function(data) {
@@ -120,6 +125,7 @@
 
         function mudarAba(aba) {
             estado.abaAtiva = aba;
+            estado.mesaSelecionadaId = null; // Limpa a seleção ao mudar de aba
             document.getElementById('btn-aba-caixa').className = "btn-tab " + (aba === 'caixa' ? 'active-caixa' : '');
             document.getElementById('btn-aba-cozinha').className = "btn-tab " + (aba === 'cozinha' ? 'active-cozinha' : '');
             document.getElementById('btn-aba-bar').className = "btn-tab " + (aba === 'bar' ? 'active-bar' : '');
@@ -133,11 +139,15 @@
 
         function adicionarItem() {
             if (!estado.mesaSelecionadaId) return;
-            var selectVal = document.getElementById('select-produto').value;
+            var selectEl = document.getElementById('select-produto');
+            var qtdEl = document.getElementById('input-qtd');
+            
+            if (!selectEl || !qtdEl) return;
+            var selectVal = selectEl.value;
             var prod = CARDAPIO.find(function(p) { return p.nome == selectVal; });
             if (!prod) return;
 
-            var qtd = Number(document.getElementById('input-qtd').value) || 1;
+            var qtd = Number(qtdEl.value) || 1;
             var mesaObj = estado.mesas.find(function(m) { return m.id == estado.mesaSelecionadaId; });
             
             var idMesaFinal = mesaObj.id;
@@ -154,12 +164,30 @@
                 tipo: prod.tipo || 'bar'
             };
 
+            // Adiciona localmente de imediato para feedback instantâneo
+            mesaObj.status = 'ocupada';
+            mesaObj.idExibicao = idMesaFinal;
+            mesaObj.itens.push({ produto: prod.nome, qtd: qtd });
+            renderizar();
+
             fetch(API_URL, {
                 method: 'POST',
                 mode: 'no-cors',
                 headers: { 'Content-Type': 'text/plain' },
                 body: JSON.stringify(novo)
-            }).then(function() { setTimeout(sincronizar, 800); });
+            }).then(function() {
+                setTimeout(function() {
+                    fetch(API_URL)
+                        .then(function(res) { return res.json(); })
+                        .then(function(data) {
+                            if (data && data.pedidos) {
+                                estado.pedidosGlobais = data.pedidos;
+                                processarPedidos();
+                                renderizar();
+                            }
+                        });
+                }, 800);
+            });
         }
 
         function fecharMesa(id) {
@@ -172,7 +200,12 @@
                 mode: 'no-cors',
                 headers: { 'Content-Type': 'text/plain' },
                 body: JSON.stringify({ acao: 'fechar_mesa', mesa: idAlvo })
-            }).then(function() { setTimeout(sincronizar, 800); });
+            }).then(function() {
+                setTimeout(function() {
+                    estado.mesaSelecionadaId = null;
+                    sincronizar();
+                }, 800);
+            });
         }
 
         function finalizarDia() {
@@ -215,7 +248,7 @@
 
                     var opcoesHtml = '';
                     if (CARDAPIO.length === 0) {
-                        opcoesHtml = '<option value="">A carregar cardápio da planilha...</option>';
+                        opcoesHtml = '<option value="">A carregar cardápio...</option>';
                     } else {
                         for (var c = 0; c < CARDAPIO.length; c++) {
                             var pItem = CARDAPIO[c];
@@ -271,8 +304,21 @@
             }
         }
 
-        renderizar();
-        sincronizar();
+        // Carga inicial dos dados
+        fetch(API_URL)
+            .then(function(res) { return res.json(); })
+            .then(function(data) {
+                if (data) {
+                    if (data.produtos) CARDAPIO = data.produtos;
+                    if (data.pedidos) {
+                        estado.pedidosGlobais = data.pedidos;
+                        processarPedidos();
+                    }
+                    renderizar();
+                }
+            });
+
+        // Sincronização periódica segura
         setInterval(sincronizar, 3000);
     </script>
 </body>
