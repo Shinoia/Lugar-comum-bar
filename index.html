@@ -165,7 +165,7 @@
             for (var c = 0; c < CARDAPIO.length; c++) {
                 if (estoqueDisponivel(CARDAPIO[c].nome) > 0) return CARDAPIO[c].nome;
             }
-            return CARDAPIO.length > 0 ? CARDAPIO[0].nome : '';
+            return '';
         }
         function desfazerPedido(novo, mensagem) {
             estado.pendentes = estado.pendentes.filter(function(pd) { return pd.pedido !== novo; });
@@ -366,8 +366,9 @@
             if (!estado.mesaSelecionadaId) return;
             
             var prod = CARDAPIO.find(function(p) { return p.nome == estado.produtoSelecionadoCache; });
-            if (!prod) {
-                prod = CARDAPIO[0];
+            if (!prod || estoqueDisponivel(prod.nome) <= 0) {
+                alert('Selecione um produto disponível.');
+                return;
             }
 
             var qtd = Number(estado.quantidadeCache) || 1;
@@ -597,20 +598,25 @@
                         for (var c = 0; c < CARDAPIO.length; c++) {
                             var pItem = CARDAPIO[c];
                             var esgotado = estoqueDisponivel(pItem.nome) <= 0;
-                            var selecionadoAttr = (pItem.nome === estado.produtoSelecionadoCache && !esgotado) ? 'selected' : '';
+                            if (esgotado) continue; // estoque 0 na planilha: não aparece no site
+                            var selecionadoAttr = (pItem.nome === estado.produtoSelecionadoCache) ? 'selected' : '';
                             var disp = estoqueDisponivel(pItem.nome);
                             opcoesHtml += '<option value="' + esc(pItem.nome) + '" ' + selecionadoAttr + (esgotado ? ' disabled' : '') + '>' + esc(pItem.nome) + ' - ' + brl(pItem.preco) + (esgotado ? ' - ESGOTADO' : ' - ' + disp + ' un') + '</option>';
                         }
 
+
+                        if (!opcoesHtml) opcoesHtml = '<option value="" disabled selected>Nenhum produto disponível</option>';
 
                         lateral = '<div class="painel-lateral">' +
                             '<div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #991b1b; padding-bottom: 0.75rem; margin-bottom: 1rem;">' +
                                 '<h3>' + esc(nomeMesa(mesaSel)) + '</h3>' +
                                 '<button data-id="' + esc(mesaSel.id) + '" onclick="fecharMesa(this.getAttribute(\'data-id\'))" style="background: #f87171; border: 2px solid #000; padding: 0.25rem 0.5rem; border-radius: 0.5rem;">' + (mesaSel.vip ? 'Guardar na conta VIP' : 'Fechar Conta') + '</button>' +
                             '</div>' +
-                            '<div style="background: #facc15; border: 2px solid #000; padding: 0.5rem; border-radius: 0.5rem; margin-bottom: 1rem; text-align: center;">' +
-                                '<strong style="font-size: 1rem;">Total Comanda: ' + brl(valorTotalComanda) + '</strong>' +
-                            '</div>' +
+                            (mesaSel.vip
+                                ? '<div style="margin-bottom: 1rem; font-size: 0.875rem; font-weight: normal;">Total: ' + brl(valorTotalComanda) + '</div>'
+                                : '<div style="background: #facc15; border: 2px solid #000; padding: 0.5rem; border-radius: 0.5rem; margin-bottom: 1rem; text-align: center;">' +
+                                    '<strong style="font-size: 1rem;">Total Comanda: ' + brl(valorTotalComanda) + '</strong>' +
+                                  '</div>') +
                             '<div class="form-grupo">' +
                                 '<label style="font-size: 0.75rem;">SELECIONAR PRODUTO</label>' +
                                 '<select id="select-produto">' + opcoesHtml + '</select>' +
@@ -626,8 +632,11 @@
                     function cardHtml(m) {
                         var classeOcupada = m.status === 'ocupada' ? 'ocupada' : '';
                         var classeSelecionada = String(m.id) === String(estado.mesaSelecionadaId) ? 'selecionada' : '';
+                        var valorCard = m.vip
+                            ? '<span style="font-size: 0.875rem; font-weight: normal;">' + brl(totalMesaObj(m)) + '</span>'
+                            : '<strong style="font-size: 1.1rem;">' + brl(totalMesaObj(m)) + '</strong>';
                         var textoStatus = m.status === 'ocupada'
-                            ? (m.itens.length > 0 ? '<strong style="font-size: 1.1rem;">' + brl(totalMesaObj(m)) + '</strong><br>' + m.itens.length + ' itens' : 'Sem pedidos')
+                            ? (m.itens.length > 0 ? valorCard + '<br>' + m.itens.length + ' itens' : 'Sem pedidos')
                             : 'Livre';
                         var corBar = '#fff', corCoz = '#fff';
                         if (m.status === 'ocupada') {
@@ -672,7 +681,7 @@
                                 '<span class="badge" style="background:' + corStatus(ia.statusPreparo || 'pendente') + ';">' + String(ia.statusPreparo || 'pendente').toUpperCase() + '</span></div>';
                         }
                         var cartaoAb = '<div class="mesa-card ocupada" style="height:auto; gap:0.5rem; cursor:default;">' +
-                            '<div style="display:flex; justify-content:space-between;"><strong>' + esc(nomeMesa(ma)) + '</strong><strong>' + brl(totalMesaObj(ma)) + '</strong></div>' +
+                            '<div style="display:flex; justify-content:space-between;"><strong>' + esc(nomeMesa(ma)) + '</strong>' + (ma.vip ? '<span style="font-size:0.875rem; font-weight:normal;">' + brl(totalMesaObj(ma)) + '</span>' : '<strong>' + brl(totalMesaObj(ma)) + '</strong>') + '</div>' +
                             (ma.abertaEm ? '<small>Aberta em ' + esc(ma.abertaEm) + '</small>' : '') +
                             '<div style="display:flex; flex-direction:column; gap:0.25rem;">' + linhasAb + '</div>' +
                             '<button data-id="' + esc(ma.id) + '" onclick="abrirNaCaixa(this.getAttribute(\'data-id\'))" style="background:#fff; border:2px solid #000;">Abrir na caixa</button>' +
@@ -686,7 +695,7 @@
                             '<button onclick="encerrarTodas()" style="background:#f87171; border:2px solid #000;"' + (abertasLista.length === 0 ? ' disabled' : '') + '>🔒 Encerrar todas (senha)</button>' +
                         '</div>' +
                         (abHtml ? '<div class="mesas-grid">' + abHtml + '</div>' : '<p style="color:#000; font-weight:bold; padding:2rem; text-align:center;">Nenhuma mesa em aberto.</p>') +
-                        (vipAbHtml ? '<h2 style="color:#000; margin: 1.5rem 0 0.5rem;">⭐ VIP em aberto: ' + vipLista.length + ' | ' + brl(totalVipAb) + '</h2><p style="color:#000; font-size:0.8rem; margin-bottom:0.75rem;">Contas mensais: não entram no "Encerrar todas" nem no fechamento do dia.</p><div class="mesas-grid">' + vipAbHtml + '</div>' : '') +
+                        (vipAbHtml ? '<h2 style="color:#000; margin: 1.5rem 0 0.5rem;">⭐ VIP em aberto: ' + vipLista.length + '</h2><p style="color:#000; font-size:0.875rem; font-weight:normal; margin-bottom:0.25rem;">Total: ' + brl(totalVipAb) + '</p><p style="color:#000; font-size:0.8rem; margin-bottom:0.75rem;">Contas mensais: não entram no "Encerrar todas" nem no fechamento do dia.</p><div class="mesas-grid">' + vipAbHtml + '</div>' : '') +
                     '</div>';
                 } else {
                     var ehCozinha = (estado.abaAtiva === 'cozinha');
