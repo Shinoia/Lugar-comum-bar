@@ -311,17 +311,18 @@
                                 return n < pd.base + 1;
                             });
                             estado.pendentes.forEach(function(pd) { data.pedidos.push(pd.pedido); });
-                            // mudanças de status feitas aqui e ainda não confirmadas pelo servidor
+                            // mudanças de status feitas aqui: ficam na tela até a planilha confirmar (e são reenviadas)
                             for (var kk = 0; kk < data.pedidos.length; kk++) {
                                 var chv = chavePedido(data.pedidos, kk);
                                 var ov = estado.overrides[chv];
                                 if (!ov) continue;
                                 var pk = data.pedidos[kk];
-                                var servidorTemStatus = ('statusPreparo' in pk);
-                                if (servidorTemStatus && (pk.statusPreparo === ov.status || Date.now() - ov.t > 60000)) {
+                                if (pk.statusPreparo === ov.status || Date.now() - ov.t > 600000) {
                                     delete estado.overrides[chv];
                                 } else {
                                     pk.statusPreparo = ov.status;
+                                    if (pk.linha) ov.linha = pk.linha;
+                                    if (!ov.enviando && Date.now() - ov.ult > 6000) enviarStatus(chv);
                                 }
                             }
                             processarPedidos();
@@ -510,14 +511,32 @@
             var p = estado.pedidosGlobais[idItem];
             if (p && p.status !== 'fechado') {
                 p.statusPreparo = novoEstado;
-                estado.overrides[chavePedido(estado.pedidosGlobais, idItem)] = { status: novoEstado, t: Date.now() };
-                if (p.linha) {
-                    fetch(API_URL, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'text/plain' },
-                        body: JSON.stringify({ acao: 'status_preparo', linha: p.linha, mesa: p.mesa, produto: p.produto, statusPreparo: novoEstado }) });
-                }
+                var chv = chavePedido(estado.pedidosGlobais, idItem);
+                estado.overrides[chv] = { status: novoEstado, t: Date.now(), ult: 0, enviando: false, mesa: p.mesa, produto: p.produto, linha: p.linha };
+                enviarStatus(chv);
                 processarPedidos();
                 renderizar();
             }
+        }
+        // Envia o status e confere a resposta. A mudança só deixa de ser "reservada" na tela quando
+        // a planilha realmente mostra o novo status; enquanto isso, reenvia a cada sincronização.
+        function enviarStatus(chv) {
+            var ov = estado.overrides[chv];
+            if (!ov || ov.enviando || !ov.linha) return;
+            ov.enviando = true; ov.ult = Date.now();
+            var qs = '?acao=status_preparo&linha=' + encodeURIComponent(ov.linha) + '&mesa=' + encodeURIComponent(ov.mesa) +
+                '&produto=' + encodeURIComponent(ov.produto) + '&status=' + encodeURIComponent(ov.status);
+            fetch(API_URL + qs, { keepalive: true })
+                .then(function(res) { return res.json(); })
+                .then(function(r) {
+                    ov.enviando = false;
+                    if (!(r && r.result === 'success') && !(r && r.error)) {
+                        // script antigo (não conhece a ação por GET): usa o envio de antes
+                        fetch(API_URL, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'text/plain' },
+                            body: JSON.stringify({ acao: 'status_preparo', linha: ov.linha, mesa: ov.mesa, produto: ov.produto, statusPreparo: ov.status }) });
+                    }
+                })
+                .catch(function() { ov.enviando = false; });
         }
 
         var cancelando = false;
