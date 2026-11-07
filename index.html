@@ -207,7 +207,7 @@
                 for (var k = 0; k < estado.pedidosGlobais.length; k++) {
                     var p = estado.pedidosGlobais[k];
                     if (!p || !p.mesa) continue;
-                    if (p.status === 'fechado' && !ehVip(p.mesa)) {
+                    if (p.status === 'fechado') {
                         var kf = String(p.mesa) + '|' + String(p.tchau);
                         if (!finMapa[kf]) { finMapa[kf] = { k: kf, mesa: String(p.mesa), tchau: String(p.tchau), abertura: p.oi || '', itens: [], total: 0 }; finLista.push(finMapa[kf]); }
                         var pcf = CARDAPIO.find(function(c) { return c.nome && c.nome.toLowerCase() === String(p.produto).toLowerCase(); });
@@ -822,7 +822,8 @@
                             '<div style="display:flex; justify-content:space-between;"><strong>' + esc(nomeMesa(ma)) + '</strong>' + (ma.vip ? '<span style="font-size:0.875rem; font-weight:normal;">' + brl(totalMesaObj(ma)) + '</span>' : '<strong>' + brl(totalMesaObj(ma)) + '</strong>') + '</div>' +
                             (ma.abertaEm ? '<small>Aberta em ' + esc(ma.abertaEm) + '</small>' : '') +
                             '<div style="display:flex; flex-direction:column; gap:0.25rem;">' + linhasAb + '</div>' +
-                            '<button data-id="' + esc(ma.id) + '" onclick="abrirNaCaixa(this.getAttribute(\'data-id\'))" style="background:#fff; border:2px solid #000;">Abrir na caixa</button>' +
+                            '<div style="display:flex; gap:0.5rem;"><button data-id="' + esc(ma.id) + '" onclick="abrirNaCaixa(this.getAttribute(\'data-id\'))" style="background:#fff; border:2px solid #000; flex:1;">Abrir na caixa</button>' +
+                            '<button data-id="' + esc(ma.id) + '" onclick="imprimirAberta(this.getAttribute(\'data-id\'))" title="Imprimir na térmica" style="background:#fff; border:2px solid #000;">🖨️</button></div>' +
                         '</div>';
                         if (ma.vip) vipAbHtml += cartaoAb; else abHtml += cartaoAb;
                     }
@@ -860,7 +861,7 @@
                             '</div>' +
                         '</div>' +
                         (finHtml ? '<div class="mesas-grid">' + finHtml + '</div>' : '<p style="color:#000; font-weight:bold; padding:2rem; text-align:center;">Nenhuma comanda finalizada hoje.</p>') +
-                        '<p style="color:#000; font-size:0.8rem; margin-top:1rem;">Ao usar "Finalizar Dia" (com senha) esta lista é zerada. Contas VIP ficam na aba VIP da planilha.</p>' +
+                        '<p style="color:#000; font-size:0.8rem; margin-top:1rem;">Ao usar "Finalizar Dia" (com senha) esta lista é zerada. O consumo das contas VIP também fica acumulado na aba VIP da planilha.</p>' +
                     '</div>';
                 } else {
                     var ehCozinha = (estado.abaAtiva === 'cozinha');
