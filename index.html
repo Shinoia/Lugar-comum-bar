@@ -69,11 +69,23 @@
         // ---------- código de acesso da equipe ----------
         // Todas as chamadas ao servidor levam o código; sem ele o servidor não responde. O código não fica no site:
         // é digitado uma vez em cada aparelho.
-        var CHAVE = '';
-        try { CHAVE = localStorage.getItem('lcb_chave') || ''; } catch (e) {}
+        // O login vale até o fim do dia de trabalho (06:00) e some ao fechar o aplicativo/aba (sessionStorage).
+        function diaDeTrabalho() { return new Date(Date.now() - 6 * 3600 * 1000).toDateString(); }
+        function lerChaveSalva() {
+            try {
+                localStorage.removeItem('lcb_chave'); // versões antigas guardavam para sempre
+                var v = JSON.parse(sessionStorage.getItem('lcb_sessao') || 'null');
+                return (v && v.dia === diaDeTrabalho()) ? v.chave : '';
+            } catch (e) { return ''; }
+        }
+        function guardarChave(v) {
+            try { if (v) sessionStorage.setItem('lcb_sessao', JSON.stringify({ chave: v, dia: diaDeTrabalho() })); else sessionStorage.removeItem('lcb_sessao'); } catch (e) {}
+        }
+        var CHAVE = lerChaveSalva();
         var fetchOriginal = fetch;
         fetch = function(u, o) {
             if (String(u).indexOf(API_URL) !== 0) return fetchOriginal(u, o);
+            if (CHAVE && lerChaveSalva() !== CHAVE) { CHAVE = ''; guardarChave(''); } // virou o dia de trabalho
             if (!CHAVE) { pedirChave(''); return Promise.reject(new Error('sem código de acesso')); }
             if (o && o.method === 'POST') {
                 var corpo = {};
@@ -87,9 +99,8 @@
             return fetchOriginal(u, o).then(function(res) {
                 return res.clone().json().then(function(j) {
                     if (j && j.negado) {
-                        var bloqueado = String(j.error || '').indexOf('Muitas') === 0;
-                        if (!bloqueado) { CHAVE = ''; try { localStorage.removeItem('lcb_chave'); } catch (e) {} }
-                        pedirChave(j.error || 'Acesso negado.');
+                        CHAVE = ''; guardarChave('');
+                        pedirChave('Código incorreto.');
                     }
                     return res;
                 }).catch(function() { return res; });
@@ -114,7 +125,7 @@
             v = String(v || '').trim();
             if (!v) return;
             CHAVE = v;
-            try { localStorage.setItem('lcb_chave', v); } catch (e) {}
+            guardarChave(v);
             var el = document.getElementById('janela-chave');
             if (el && el.parentNode) el.parentNode.removeChild(el);
             sincronizar();
