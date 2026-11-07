@@ -58,6 +58,8 @@
             <button id="btn-aba-abertas" class="btn-tab" onclick="mudarAba('abertas')">📋 Abertas</button>
             <button id="btn-aba-finalizadas" class="btn-tab" onclick="mudarAba('finalizadas')">✅ Finalizadas</button>
             <button class="btn-dia" onclick="finalizarDia()">🏁 Finalizar Dia</button>
+            <span id="info-usuario" class="sync-status" style="background:#fff;"></span>
+            <button class="btn-tab" onclick="sair()" title="Sair deste aparelho">Sair</button>
         </div>
     </header>
 
@@ -66,41 +68,41 @@
     <script>
         var API_URL = "https://script.google.com/macros/s/AKfycbwvI5hgSTG-T0EpHk9pNHqe31ex0P9EQb_TixFis94UcaHF45F-SWS2T3fBfPedMRY7/exec";
 
-        // ---------- código de acesso da equipe ----------
-        // Todas as chamadas ao servidor levam o código; sem ele o servidor não responde. O código não fica no site:
-        // é digitado uma vez em cada aparelho.
-        // O login vale até o fim do dia de trabalho (06:00) e some ao fechar o aplicativo/aba (sessionStorage).
+        // ---------- login da equipe (usuário + senha da aba "Key" da planilha) ----------
+        // Todas as chamadas ao servidor levam usuário e senha; sem eles o servidor não responde.
+        // O login fica guardado neste aparelho até o fim do dia de trabalho (06:00) e sobrevive a atualizações da página.
         function diaDeTrabalho() { return new Date(Date.now() - 6 * 3600 * 1000).toDateString(); }
-        function lerChaveSalva() {
+        function lerSessao() {
             try {
-                localStorage.removeItem('lcb_chave'); // versões antigas guardavam para sempre
-                var v = JSON.parse(sessionStorage.getItem('lcb_sessao') || 'null');
-                return (v && v.dia === diaDeTrabalho()) ? v.chave : '';
-            } catch (e) { return ''; }
+                var v = JSON.parse(localStorage.getItem('lcb_sessao2') || 'null');
+                return (v && v.dia === diaDeTrabalho() && v.chave && v.usuario) ? v : null;
+            } catch (e) { return null; }
         }
-        function guardarChave(v) {
-            try { if (v) sessionStorage.setItem('lcb_sessao', JSON.stringify({ chave: v, dia: diaDeTrabalho() })); else sessionStorage.removeItem('lcb_sessao'); } catch (e) {}
+        function guardarSessao(usuario, chave) {
+            try { if (chave) localStorage.setItem('lcb_sessao2', JSON.stringify({ usuario: usuario, chave: chave, dia: diaDeTrabalho() })); else localStorage.removeItem('lcb_sessao2'); } catch (e) {}
         }
-        var CHAVE = lerChaveSalva();
+        var SESSAO = lerSessao();
+        var CHAVE = SESSAO ? SESSAO.chave : '';
+        var USUARIO = SESSAO ? SESSAO.usuario : '';
         var fetchOriginal = fetch;
         fetch = function(u, o) {
             if (String(u).indexOf(API_URL) !== 0) return fetchOriginal(u, o);
-            if (CHAVE && lerChaveSalva() !== CHAVE) { CHAVE = ''; guardarChave(''); } // virou o dia de trabalho
-            if (!CHAVE) { pedirChave(''); return Promise.reject(new Error('sem código de acesso')); }
+            if (CHAVE && !lerSessao()) { CHAVE = ''; USUARIO = ''; } // virou o dia de trabalho
+            if (!CHAVE) { pedirChave(''); return Promise.reject(new Error('sem login')); }
             if (o && o.method === 'POST') {
                 var corpo = {};
                 try { corpo = JSON.parse(o.body); } catch (e) {}
-                corpo.chave = CHAVE;
+                corpo.chave = CHAVE; corpo.usuario = USUARIO;
                 var o2 = {}; for (var k in o) o2[k] = o[k];
                 o2.body = JSON.stringify(corpo);
                 return fetchOriginal(u, o2);
             }
-            u = String(u) + (String(u).indexOf('?') >= 0 ? '&' : '?') + 'chave=' + encodeURIComponent(CHAVE);
+            u = String(u) + (String(u).indexOf('?') >= 0 ? '&' : '?') + 'chave=' + encodeURIComponent(CHAVE) + '&usuario=' + encodeURIComponent(USUARIO);
             return fetchOriginal(u, o).then(function(res) {
                 return res.clone().json().then(function(j) {
                     if (j && j.negado) {
-                        CHAVE = ''; guardarChave('');
-                        pedirChave('Código incorreto.');
+                        CHAVE = ''; USUARIO = ''; guardarSessao('', '');
+                        pedirChave('Usuário ou senha incorretos.');
                     }
                     return res;
                 }).catch(function() { return res; });
@@ -114,21 +116,40 @@
             el.innerHTML = '<div style="background:#fff; border:3px solid #000; border-radius:0.75rem; padding:1.25rem; width:100%; max-width:22rem; color:#000;">' +
                 '<h3 style="margin-bottom:0.75rem;">🔒 Lugar Comum Bar</h3>' +
                 (aviso ? '<p style="color:#b91c1c; font-weight:bold; margin-bottom:0.5rem;">' + esc(aviso) + '</p>' : '') +
-                '<label style="font-size:0.85rem;">Código de acesso da equipe:</label>' +
-                '<input type="password" id="input-chave" autocomplete="off" style="width:100%; margin:0.25rem 0 0.75rem;" onkeydown="if(event.key===\'Enter\') entrarComChave(this.value)">' +
-                '<button type="button" onclick="entrarComChave(document.getElementById(\'input-chave\').value)" style="background:#facc15; border:2px solid #000; width:100%;">Entrar</button></div>';
+                '<label style="font-size:0.85rem;">Usuário:</label>' +
+                '<input type="text" id="input-usuario" autocomplete="username" style="width:100%; margin:0.25rem 0 0.5rem;">' +
+                '<label style="font-size:0.85rem;">Senha:</label>' +
+                '<input type="password" id="input-chave" autocomplete="current-password" style="width:100%; margin:0.25rem 0 0.75rem;" onkeydown="if(event.key===\'Enter\') entrarComChave()">' +
+                '<button type="button" onclick="entrarComChave()" style="background:#facc15; border:2px solid #000; width:100%;">Entrar</button></div>';
             document.body.appendChild(el);
-            var inp = document.getElementById('input-chave');
+            var inp = document.getElementById('input-usuario');
             if (inp && inp.focus) inp.focus();
         }
-        function entrarComChave(v) {
-            v = String(v || '').trim();
-            if (!v) return;
-            CHAVE = v;
-            guardarChave(v);
+        function entrarComChave() {
+            var u = String((document.getElementById('input-usuario') || {}).value || '').trim();
+            var v = String((document.getElementById('input-chave') || {}).value || '').trim();
+            if (!u || !v) return;
+            CHAVE = v; USUARIO = u;
+            guardarSessao(u, v);
             var el = document.getElementById('janela-chave');
             if (el && el.parentNode) el.parentNode.removeChild(el);
             sincronizar();
+        }
+        function sair() {
+            if (!confirm('Sair do sistema neste aparelho?')) return;
+            CHAVE = ''; USUARIO = ''; guardarSessao('', '');
+            estado.usuario = null;
+            atualizarUsuario();
+            pedirChave('');
+        }
+        function atualizarUsuario() {
+            var el = document.getElementById('info-usuario');
+            if (!el) return;
+            el.textContent = estado.usuario ? ('👤 ' + estado.usuario.nome + (estado.usuario.admin ? ' (admin)' : '')) : '';
+        }
+        function exigirAdmin() {
+            if (estado.usuario && !estado.usuario.admin) { alert('Somente administradores podem fazer isso.'); return false; }
+            return true;
         }
 
         // Cardápio de segurança preenchido para garantir funcionamento imediato
@@ -151,7 +172,8 @@
             pessoas: [],
             pessoasNovas: [],
             finalizadas: [],
-            frequentes: []
+            frequentes: [],
+            usuario: null
         };
         var PREFIXO_PESSOA = 'Pessoa: ';
 
@@ -367,6 +389,7 @@
                             CARDAPIO = data.produtos;
                         }
                         if (data.frequentes) estado.frequentes = data.frequentes;
+                        if (data.usuario) { estado.usuario = data.usuario; atualizarUsuario(); }
                         if (data.pedidos) {
                             estado.pedidosGlobais = data.pedidos;
                             // pedidos enviados que o servidor ainda não gravou continuam na tela
@@ -629,6 +652,7 @@
         }
 
         function encerrarTodas() {
+            if (!exigirAdmin()) return;
             var abertas = todasMesas().filter(function(m) { return m.status === 'ocupada' && m.itens.length > 0 && !m.vip; });
             if (abertas.length === 0) { alert('Não há mesas abertas.'); return; }
             if (!confirm('Encerrar ' + abertas.length + ' comanda(s) em aberto, total ' + brl(abertas.reduce(function(a, m) { return a + totalMesaObj(m); }, 0)) + '?')) return;
@@ -773,6 +797,7 @@
         }
 
         function finalizarDia() {
+            if (!exigirAdmin()) return;
             var mesasOcupadas = todasMesas().filter(function(m) { return m.status === 'ocupada' && m.itens.length > 0 && !m.vip; });
             if (mesasOcupadas.length > 0) {
                 alert("Não é possível finalizar o dia! Ainda existem mesas abertas.\nVá na aba 📋 Abertas e use \"Encerrar todas\" (senha) se for o caso.");
