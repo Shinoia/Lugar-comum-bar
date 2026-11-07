@@ -35,7 +35,7 @@
         @media(min-width: 768px) { .kds-grid { grid-template-columns: repeat(2, 1fr); } }
         @media(min-width: 1024px) { .kds-grid { grid-template-columns: repeat(4, 1fr); } }
         
-        .kds-card { padding: 1rem; border-radius: 0.75rem; border: 2px solid #991b1b; cursor: pointer; display: flex; flex-direction: column; justify-content: space-between; height: 12rem; background: #f472b6; color: #000; }
+        .kds-card { padding: 1rem; border-radius: 0.75rem; border: 2px solid #991b1b; cursor: pointer; display: flex; flex-direction: column; justify-content: space-between; min-height: 12rem; gap: 0.5rem; background: #f472b6; color: #000; }
         .kds-card.preparando { background: #f97316; }
         .kds-card.pronto { background: #4ade80; }
         .kds-card.entregue { background: #facc15; }
@@ -56,6 +56,7 @@
             <button id="btn-aba-cozinha" class="btn-tab" onclick="mudarAba('cozinha')">🍳 Cozinha</button>
             <button id="btn-aba-bar" class="btn-tab" onclick="mudarAba('bar')">🍻 Bar</button>
             <button id="btn-aba-abertas" class="btn-tab" onclick="mudarAba('abertas')">📋 Abertas</button>
+            <button id="btn-aba-finalizadas" class="btn-tab" onclick="mudarAba('finalizadas')">✅ Finalizadas</button>
             <button class="btn-dia" onclick="finalizarDia()">🏁 Finalizar Dia</button>
         </div>
     </header>
@@ -80,9 +81,11 @@
             pedidosGlobais: [],
             pendentes: [],
             overrides: {},
+            obsCache: '',
             mesas: [],
             pessoas: [],
-            pessoasNovas: []
+            pessoasNovas: [],
+            finalizadas: []
         };
         var PREFIXO_PESSOA = 'Pessoa: ';
 
@@ -109,6 +112,16 @@
             return String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
         }
         function brl(v) { return Number(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }); }
+        // observação do pedido (ex.: sem cebola): texto curto, sem quebra de linha
+        function limparObs(v) {
+            return String(v === undefined || v === null ? '' : v).replace(/[\r\n\t]+/g, ' ').replace(/\s+/g, ' ').replace(/^[=+\-@\s]+/, '').trim().substring(0, 60);
+        }
+        function htmlObs(obs, grande) {
+            if (!obs) return '';
+            return grande
+                ? '<div style="font-size:0.9rem; font-weight:bold; background:#fff; border:2px solid #000; border-radius:0.4rem; padding:0.15rem 0.4rem; margin-top:0.25rem;">📝 ' + esc(obs) + '</div>'
+                : '<br><small>📝 ' + esc(obs) + '</small>';
+        }
         function ehVip(chave) { return String(chave).indexOf('VIP-') === 0; }
         function ehPessoa(chave) { return String(chave).indexOf(PREFIXO_PESSOA) === 0; }
         function limparNome(n) {
@@ -189,10 +202,19 @@
                 var contagemFechamentos = {};
                 var fechSets = {};
                 var pessoasMapa = {};
+                var finMapa = {}, finLista = [];
 
                 for (var k = 0; k < estado.pedidosGlobais.length; k++) {
                     var p = estado.pedidosGlobais[k];
                     if (!p || !p.mesa) continue;
+                    if (p.status === 'fechado' && !ehVip(p.mesa)) {
+                        var kf = String(p.mesa) + '|' + String(p.tchau);
+                        if (!finMapa[kf]) { finMapa[kf] = { k: kf, mesa: String(p.mesa), tchau: String(p.tchau), abertura: p.oi || '', itens: [], total: 0 }; finLista.push(finMapa[kf]); }
+                        var pcf = CARDAPIO.find(function(c) { return c.nome && c.nome.toLowerCase() === String(p.produto).toLowerCase(); });
+                        var prf = p.preco || (pcf ? pcf.preco : 0);
+                        finMapa[kf].itens.push({ produto: p.produto, qnt: Number(p.qnt || 1), preco: prf, obs: p.obs || '', pedidoEm: p.pedidoEm || p.oi || '' });
+                        finMapa[kf].total += Number(p.qnt || 1) * prf;
+                    }
                     var baseId = String(p.mesa).split('.')[0];
                     var mesaObj = estado.mesas.find(function(m) { return m.id == baseId; });
                     if (ehPessoa(p.mesa) || ehVip(p.mesa)) {
@@ -202,7 +224,7 @@
                         }
                         mesaObj = pessoasMapa[p.mesa];
                         var pc = CARDAPIO.find(function(c) { return c.nome && c.nome.toLowerCase() === String(p.produto).toLowerCase(); });
-                        mesaObj.itens.push({ idItem: k, produto: p.produto, qnt: Number(p.qnt || 1), preco: pc ? pc.preco : (p.preco || 0), tipo: p.tipo || 'bar', statusPreparo: p.statusPreparo || 'pendente', linha: p.linha, mesaKey: p.mesa });
+                        mesaObj.itens.push({ idItem: k, produto: p.produto, qnt: Number(p.qnt || 1), preco: pc ? pc.preco : (p.preco || 0), tipo: p.tipo || 'bar', statusPreparo: p.statusPreparo || 'pendente', linha: p.linha, mesaKey: p.mesa, obs: p.obs || '' });
                         continue;
                     }
 
@@ -228,7 +250,8 @@
                                 tipo: p.tipo || 'bar',
                                 statusPreparo: p.statusPreparo || 'pendente',
                                 linha: p.linha,
-                                mesaKey: p.mesa
+                                mesaKey: p.mesa,
+                                obs: p.obs || ''
                             });
                         }
                     }
@@ -243,6 +266,8 @@
                     }
                 });
                 estado.pessoas.sort(function(a, b) { return a.nome.localeCompare(b.nome, 'pt'); });
+                finLista.sort(function(a, b) { return ordemData(b.tchau).localeCompare(ordemData(a.tchau)); });
+                estado.finalizadas = finLista;
 
                 for (var mId in contagemFechamentos) {
                     var mObj = estado.mesas.find(function(m) { return m.id == mId; });
@@ -261,6 +286,8 @@
                 var qtd = document.getElementById('input-qtd');
                 if (sel && sel.value) estado.produtoSelecionadoCache = sel.value;
                 if (qtd && qtd.value) estado.quantidadeCache = qtd.value;
+                var obsEl = document.getElementById('input-obs');
+                if (obsEl) estado.obsCache = obsEl.value;
             } catch (err) {}
         }
 
@@ -321,6 +348,8 @@
             if (btnCozinha) btnCozinha.className = "btn-tab " + (aba === 'cozinha' ? 'active-cozinha' : '');
             if (btnBar) btnBar.className = "btn-tab " + (aba === 'bar' ? 'active-bar' : '');
             if (btnAbertas) btnAbertas.className = "btn-tab " + (aba === 'abertas' ? 'active-abertas' : '');
+            var btnFin = document.getElementById('btn-aba-finalizadas');
+            if (btnFin) btnFin.className = "btn-tab " + (aba === 'finalizadas' ? 'active-abertas' : '');
             
             renderizar();
         }
@@ -386,7 +415,8 @@
                 preco: prod.preco,
                 tipo: prod.tipo || 'bar',
                 status: 'pendente',
-                statusPreparo: 'pendente'
+                statusPreparo: 'pendente',
+                obs: limparObs(estado.obsCache)
             };
 
             var base = estado.pedidosGlobais.filter(function(x) { return x.status !== 'fechado' && String(x.mesa) === String(novo.mesa) && x.produto === novo.produto; }).length;
@@ -396,6 +426,9 @@
             // volta o formulário ao padrão: primeiro produto da lista e quantidade 1
             estado.produtoSelecionadoCache = primeiroDisponivel();
             estado.quantidadeCache = 1;
+            estado.obsCache = '';
+            var obsForm = document.getElementById('input-obs');
+            if (obsForm) obsForm.value = '';
             var selForm = document.getElementById('select-produto');
             var qtdForm = document.getElementById('input-qtd');
             if (selForm) { selForm.selectedIndex = 0; if (estado.produtoSelecionadoCache) selForm.value = estado.produtoSelecionadoCache; }
@@ -405,7 +438,8 @@
             renderizar();
 
             var urlPedido = API_URL + '?acao=novo_pedido&mesa=' + encodeURIComponent(novo.mesa) +
-                '&produto=' + encodeURIComponent(novo.produto) + '&qnt=' + encodeURIComponent(novo.qnt);
+                '&produto=' + encodeURIComponent(novo.produto) + '&qnt=' + encodeURIComponent(novo.qnt) +
+                (novo.obs ? '&obs=' + encodeURIComponent(novo.obs) : '');
             fetch(urlPedido, { keepalive: true })
                 .then(function(res) { return res.json(); })
                 .then(function(r) {
@@ -507,18 +541,120 @@
             if (mesaObj.pessoa) {
                 estado.pessoasNovas = estado.pessoasNovas.filter(function(n) { return n !== mesaObj.id; });
             }
+            // recibo final (impressão automática ao fechar, se marcada)
+            if (lerConfig('autoimp', '0') === '1' && mesaObj.itens.length > 0) {
+                var snap = { mesa: String(idAlvo), tchau: agoraBR(), abertura: mesaObj.abertaEm || '', itens: [], total: 0 };
+                mesaObj.itens.forEach(function(it) {
+                    snap.itens.push({ produto: it.produto, qnt: it.qnt, preco: it.preco, obs: it.obs || '', pedidoEm: '' });
+                    snap.total += it.qnt * it.preco;
+                });
+                imprimirHtml(htmlRecibo(snap, 'FINAL'));
+            }
 
-            fetch(API_URL, {
+            var aposFechar = function() {
+                setTimeout(function() {
+                    estado.mesaSelecionadaId = null;
+                    sincronizar();
+                }, 800);
+            };
+            // GET primeiro (o servidor novo também gera o PDF no Drive); se o script for antigo, usa o POST de antes
+            fetch(API_URL + '?acao=fechar_mesa&mesa=' + encodeURIComponent(idAlvo))
+                .then(function(res) { return res.json(); })
+                .then(function(r) {
+                    if (r && r.result === 'success') { aposFechar(); return; }
+                    return fecharMesaPost(idAlvo).then(aposFechar);
+                })
+                .catch(function() { fecharMesaPost(idAlvo).then(aposFechar); });
+        }
+        function fecharMesaPost(idAlvo) {
+            return fetch(API_URL, {
                 method: 'POST',
                 mode: 'no-cors',
                 headers: { 'Content-Type': 'text/plain' },
                 body: JSON.stringify({ acao: 'fechar_mesa', mesa: idAlvo })
-            }).then(function() {
-                setTimeout(function() {
-                    estado.mesaSelecionadaId = null;
-                    sincronizar();
-                }, 1000);
             });
+        }
+
+        // ---------- impressão térmica / comandas finalizadas ----------
+        function lerConfig(nome, padrao) { try { var v = localStorage.getItem('lcb_' + nome); return v === null ? padrao : v; } catch (e) { return padrao; } }
+        function gravarConfig(nome, v) { try { localStorage.setItem('lcb_' + nome, v); } catch (e) {} }
+        function agoraBR() {
+            var d = new Date(), z = function(n) { return (n < 10 ? '0' : '') + n; };
+            return z(d.getDate()) + '/' + z(d.getMonth() + 1) + '/' + d.getFullYear() + ' ' + z(d.getHours()) + ':' + z(d.getMinutes()) + ':' + z(d.getSeconds());
+        }
+        function ordemData(t) { var m = String(t).match(/(\d{2})\/(\d{2})\/(\d{4}) (\d{2}):(\d{2}):(\d{2})/); return m ? m[3] + m[2] + m[1] + m[4] + m[5] + m[6] : '0'; }
+        function soHora(t) { var m = String(t).match(/\d{2}:\d{2}(:\d{2})?/); return m ? m[0] : ''; }
+        function rotuloChave(k) {
+            k = String(k);
+            if (ehPessoa(k)) return k.substring(PREFIXO_PESSOA.length);
+            if (ehVip(k)) return k;
+            return 'Mesa ' + k;
+        }
+        function mudarPapel(v) { gravarConfig('papel', v); }
+        function mudarAutoImp(el) { gravarConfig('autoimp', el.checked ? '1' : '0'); }
+
+        // tipo: 'FINAL' (comanda fechada) ou 'CONFERENCIA' (parcial, ainda aberta)
+        function htmlRecibo(c, tipo) {
+            var larg = lerConfig('papel', '80') === '58' ? '48mm' : '72mm';
+            var linhas = '';
+            c.itens.forEach(function(it) {
+                linhas += '<div class="r"><span>' + it.qnt + 'x ' + esc(it.produto) + '</span><span>' + brl(it.qnt * it.preco) + '</span></div>';
+                var h = soHora(it.pedidoEm);
+                if (h) linhas += '<div class="s">pedido às ' + esc(h) + '</div>';
+                if (it.obs) linhas += '<div class="s">* ' + esc(it.obs) + '</div>';
+            });
+            var dataDia = (String(c.tchau || agoraBR()).match(/\d{2}\/\d{2}\/\d{4}/) || [''])[0];
+            var fech = tipo === 'FINAL' ? '<div>Fechamento: ' + esc(soHora(c.tchau)) + '</div>' : '<div><b>CONFERÊNCIA - conta em aberto</b></div>';
+            return '<!doctype html><html><head><meta charset="utf-8"><title>Comanda</title><style>' +
+                '@page{size:' + (larg === '48mm' ? '58mm' : '80mm') + ' auto;margin:0}' +
+                'body{margin:0;padding:2mm;width:' + larg + ';font-family:"Courier New",monospace;font-size:12px;color:#000}' +
+                '.c{text-align:center}.r{display:flex;justify-content:space-between;gap:4px}.s{font-size:10px;padding-left:8px}' +
+                'hr{border:0;border-top:1px dashed #000;margin:4px 0}.t{font-size:15px;font-weight:bold}</style></head><body>' +
+                '<div class="c t">LUGAR COMUM BAR</div><div class="c"><b>' + esc(rotuloChave(c.mesa)) + '</b></div><hr>' +
+                '<div>Data: ' + esc(dataDia) + '</div>' +
+                '<div>Abertura: ' + esc(soHora(c.abertura)) + '</div>' + fech + '<hr>' +
+                linhas + '<hr><div class="r t"><span>TOTAL</span><span>' + brl(c.total) + '</span></div><hr>' +
+                '<div class="c">Obrigado e volte sempre!</div><div style="height:8mm"></div></body></html>';
+        }
+        function imprimirHtml(html) {
+            var f = document.createElement('iframe');
+            f.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0';
+            document.body.appendChild(f);
+            var d = f.contentWindow.document;
+            d.open(); d.write(html); d.close();
+            setTimeout(function() {
+                try { f.contentWindow.focus(); f.contentWindow.print(); }
+                catch (e) { alert('Não foi possível abrir a impressão neste navegador.'); }
+                setTimeout(function() { if (f.parentNode) f.parentNode.removeChild(f); }, 8000);
+            }, 300);
+        }
+        function imprimirAberta(id) {
+            var m = acharMesa(id);
+            if (!m || m.itens.length === 0) { alert('Nenhum item lançado para imprimir.'); return; }
+            var c = { mesa: String(m.pessoa ? m.id : (m.idExibicao || m.id)), tchau: agoraBR(), abertura: m.abertaEm || '', itens: [], total: 0 };
+            m.itens.forEach(function(it) { c.itens.push({ produto: it.produto, qnt: it.qnt, preco: it.preco, obs: it.obs || '', pedidoEm: '' }); c.total += it.qnt * it.preco; });
+            imprimirHtml(htmlRecibo(c, 'CONFERENCIA'));
+        }
+        function acharFinalizada(k) { return estado.finalizadas.find(function(f) { return f.k === k; }); }
+        function imprimirFinalizada(k) {
+            var c = acharFinalizada(k);
+            if (c) imprimirHtml(htmlRecibo(c, 'FINAL'));
+        }
+        function pdfFinalizada(k) {
+            var c = acharFinalizada(k);
+            if (!c) return;
+            var w = window.open('about:blank', '_blank');
+            fetch(API_URL + '?acao=gerar_pdf&mesa=' + encodeURIComponent(c.mesa) + '&tchau=' + encodeURIComponent(c.tchau))
+                .then(function(res) { return res.json(); })
+                .then(function(r) {
+                    if (r && r.result === 'success' && r.pdf) {
+                        if (w) w.location.href = r.pdf; else window.open(r.pdf, '_blank');
+                    } else {
+                        if (w) w.close();
+                        alert((r && r.error) || 'Não foi possível gerar o PDF. Confira se o Codigo.gs novo está implantado e se o Drive foi autorizado.');
+                    }
+                })
+                .catch(function() { if (w) w.close(); alert('Falha de conexão ao gerar o PDF.'); });
         }
 
         function finalizarDia() {
@@ -587,7 +723,7 @@
 
                                 listaHtml += '<div class="item-row">' +
                                     '<div><strong>' + item.qnt + 'x ' + esc(item.produto) + '</strong><br>' +
-                                    '<small>Preço: ' + brl(item.preco) + ' | Subtotal: ' + brl(subtotal) + '</small><br>' +
+                                    '<small>Preço: ' + brl(item.preco) + ' | Subtotal: ' + brl(subtotal) + '</small>' + htmlObs(item.obs, false) + '<br>' +
                                     '<span class="badge" style="background:' + corStatus(stPreparo) + '; margin-top:2px; display:inline-block;">Status: ' + stPreparo.toUpperCase() + '</span></div>' +
                                     '<div style="display:flex; flex-direction:column; gap:0.25rem;">' + botoesCancel + '</div>' +
                                 '</div>';
@@ -610,7 +746,8 @@
                         lateral = '<div class="painel-lateral">' +
                             '<div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #991b1b; padding-bottom: 0.75rem; margin-bottom: 1rem;">' +
                                 '<h3>' + esc(nomeMesa(mesaSel)) + '</h3>' +
-                                '<button data-id="' + esc(mesaSel.id) + '" onclick="fecharMesa(this.getAttribute(\'data-id\'))" style="background: #f87171; border: 2px solid #000; padding: 0.25rem 0.5rem; border-radius: 0.5rem;">' + (mesaSel.vip ? 'Guardar na conta VIP' : 'Fechar Conta') + '</button>' +
+                                '<div style="display:flex; gap:0.4rem;"><button data-id="' + esc(mesaSel.id) + '" onclick="imprimirAberta(this.getAttribute(\'data-id\'))" title="Imprimir conferência na térmica" style="background:#fff; border: 2px solid #000; padding: 0.25rem 0.5rem; border-radius: 0.5rem;">🖨️</button>' +
+                                '<button data-id="' + esc(mesaSel.id) + '" onclick="fecharMesa(this.getAttribute(\'data-id\'))" style="background: #f87171; border: 2px solid #000; padding: 0.25rem 0.5rem; border-radius: 0.5rem;">' + (mesaSel.vip ? 'Guardar na conta VIP' : 'Fechar Conta') + '</button></div>' +
                             '</div>' +
                             (mesaSel.vip
                                 ? '<div style="margin-bottom: 1rem; font-size: 0.875rem; font-weight: normal;">Total: ' + brl(valorTotalComanda) + '</div>'
@@ -621,6 +758,7 @@
                                 '<label style="font-size: 0.75rem;">SELECIONAR PRODUTO</label>' +
                                 '<select id="select-produto">' + opcoesHtml + '</select>' +
                                 '<div style="margin-top: 0.5rem;"><label style="font-size:0.65rem;">Qtd Solicitada:</label><input type="number" id="input-qtd" value="' + estado.quantidadeCache + '" min="1" style="text-align: center;" oninput="estado.quantidadeCache = this.value"></div>' +
+                                '<div style="margin-top: 0.5rem;"><label style="font-size:0.65rem;">Observação (ex.: sem cebola, sem gelo, sem álcool):</label><input type="text" id="input-obs" maxlength="60" placeholder="Opcional" value="' + esc(estado.obsCache) + '" oninput="estado.obsCache = this.value"></div>' +
                                 '<button onclick="adicionarItem()" class="btn-lancar" style="margin-top:0.5rem;">Lançar Pedido</button>' +
                             '</div>' +
                             '<div class="lista-itens">' + listaHtml + '</div>' +
@@ -677,7 +815,7 @@
                         var linhasAb = '';
                         for (var li = 0; li < ma.itens.length; li++) {
                             var ia = ma.itens[li];
-                            linhasAb += '<div style="display:flex; justify-content:space-between; gap:0.5rem; font-size:0.85rem;"><span>' + ia.qnt + 'x ' + esc(ia.produto) + '</span>' +
+                            linhasAb += '<div style="display:flex; justify-content:space-between; gap:0.5rem; font-size:0.85rem;"><span>' + ia.qnt + 'x ' + esc(ia.produto) + (ia.obs ? ' <small>(📝 ' + esc(ia.obs) + ')</small>' : '') + '</span>' +
                                 '<span class="badge" style="background:' + corStatus(ia.statusPreparo || 'pendente') + ';">' + String(ia.statusPreparo || 'pendente').toUpperCase() + '</span></div>';
                         }
                         var cartaoAb = '<div class="mesa-card ocupada" style="height:auto; gap:0.5rem; cursor:default;">' +
@@ -696,6 +834,33 @@
                         '</div>' +
                         (abHtml ? '<div class="mesas-grid">' + abHtml + '</div>' : '<p style="color:#000; font-weight:bold; padding:2rem; text-align:center;">Nenhuma mesa em aberto.</p>') +
                         (vipAbHtml ? '<h2 style="color:#000; margin: 1.5rem 0 0.5rem;">⭐ VIP em aberto: ' + vipLista.length + '</h2><p style="color:#000; font-size:0.875rem; font-weight:normal; margin-bottom:0.25rem;">Total: ' + brl(totalVipAb) + '</p><p style="color:#000; font-size:0.8rem; margin-bottom:0.75rem;">Contas mensais: não entram no "Encerrar todas" nem no fechamento do dia.</p><div class="mesas-grid">' + vipAbHtml + '</div>' : '') +
+                    '</div>';
+                } else if (estado.abaAtiva === 'finalizadas') {
+                    var finHtml = '', totalFin = 0;
+                    estado.finalizadas.forEach(function(f) {
+                        totalFin += f.total;
+                        var linhasF = f.itens.map(function(it) {
+                            return '<div style="display:flex; justify-content:space-between; gap:0.5rem; font-size:0.85rem;"><span>' + it.qnt + 'x ' + esc(it.produto) + (it.obs ? ' <small>(📝 ' + esc(it.obs) + ')</small>' : '') + (soHora(it.pedidoEm) ? ' <small>às ' + esc(soHora(it.pedidoEm)) + '</small>' : '') + '</span><span>' + brl(it.qnt * it.preco) + '</span></div>';
+                        }).join('');
+                        finHtml += '<div class="mesa-card" style="height:auto; gap:0.5rem; cursor:default;">' +
+                            '<div style="display:flex; justify-content:space-between;"><strong>' + esc(rotuloChave(f.mesa)) + '</strong><strong>' + brl(f.total) + '</strong></div>' +
+                            '<small>Aberta: ' + esc(f.abertura) + '<br>Fechada: ' + esc(f.tchau) + '</small>' +
+                            '<div style="display:flex; flex-direction:column; gap:0.25rem;">' + linhasF + '</div>' +
+                            '<div style="display:flex; gap:0.5rem;"><button data-k="' + esc(f.k) + '" onclick="imprimirFinalizada(this.getAttribute(\'data-k\'))" style="background:#fff; border:2px solid #000; flex:1;">🖨️ Imprimir</button>' +
+                            '<button data-k="' + esc(f.k) + '" onclick="pdfFinalizada(this.getAttribute(\'data-k\'))" style="background:#fff; border:2px solid #000; flex:1;">📄 PDF (Drive)</button></div>' +
+                        '</div>';
+                    });
+                    var papel = lerConfig('papel', '80');
+                    main.innerHTML = '<div>' +
+                        '<div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.75rem; margin-bottom:1rem;">' +
+                            '<h2 style="color:#000;">✅ Comandas finalizadas: ' + estado.finalizadas.length + ' | ' + brl(totalFin) + '</h2>' +
+                            '<div style="display:flex; gap:0.75rem; align-items:center; flex-wrap:wrap; color:#000; font-size:0.85rem;">' +
+                                '<label>Papel: <select onchange="mudarPapel(this.value)" style="width:auto;"><option value="80"' + (papel === '80' ? ' selected' : '') + '>80 mm</option><option value="58"' + (papel === '58' ? ' selected' : '') + '>58 mm</option></select></label>' +
+                                '<label><input type="checkbox" onchange="mudarAutoImp(this)"' + (lerConfig('autoimp', '0') === '1' ? ' checked' : '') + ' style="width:auto;"> Imprimir ao fechar a conta</label>' +
+                            '</div>' +
+                        '</div>' +
+                        (finHtml ? '<div class="mesas-grid">' + finHtml + '</div>' : '<p style="color:#000; font-weight:bold; padding:2rem; text-align:center;">Nenhuma comanda finalizada hoje.</p>') +
+                        '<p style="color:#000; font-size:0.8rem; margin-top:1rem;">Ao usar "Finalizar Dia" (com senha) esta lista é zerada. Contas VIP ficam na aba VIP da planilha.</p>' +
                     '</div>';
                 } else {
                     var ehCozinha = (estado.abaAtiva === 'cozinha');
@@ -716,7 +881,8 @@
                                         mesa: nomeMesa(mesaObj),
                                         produto: itemMesa.produto,
                                         qnt: itemMesa.qnt,
-                                        statusPreparo: itemMesa.statusPreparo || 'pendente'
+                                        statusPreparo: itemMesa.statusPreparo || 'pendente',
+                                        obs: itemMesa.obs || ''
                                     });
                                 }
                             }
@@ -733,7 +899,7 @@
                             
                             kdsHtml += '<div class="kds-card ' + classePreparo + '" onclick="lidarComCliqueCard(' + kItem.idItem + ')">' +
                                 '<div style="display: flex; justify-content: space-between;"><span class="badge">' + esc(kItem.mesa) + '</span><span style="font-size:0.75rem; font-weight:bold;">' + kItem.statusPreparo.toUpperCase() + '</span></div>' +
-                                '<div style="font-size: 1.2rem; font-weight: bold;">' + kItem.qnt + 'x ' + esc(kItem.produto) + '</div>' +
+                                '<div><div style="font-size: 1.2rem; font-weight: bold;">' + kItem.qnt + 'x ' + esc(kItem.produto) + '</div>' + htmlObs(kItem.obs, true) + '</div>' +
                                 '<div style="display: flex; justify-content: space-between; align-items: center; margin-top: 0.5rem;">' +
                                     '<span style="font-size: 0.65rem; font-weight: bold;">1 toque: preparando | 2 toques: pronto</span>' +
                                     '<button class="btn-acao-entregue" onclick="event.stopPropagation(); mudarEstadoPorId(' + kItem.idItem + ', \'entregue\')">Marcar Entregue</button>' +
@@ -750,6 +916,8 @@
                     var nAb = todasMesas().filter(function(m) { return m.status === 'ocupada' && m.itens.length > 0 && !m.vip; }).length;
                     btnAb.textContent = '📋 Abertas' + (nAb > 0 ? ' (' + nAb + ')' : '');
                 }
+                var btnFn = document.getElementById('btn-aba-finalizadas');
+                if (btnFn) btnFn.textContent = '✅ Finalizadas' + (estado.finalizadas.length > 0 ? ' (' + estado.finalizadas.length + ')' : '');
             } catch (err) {
                 console.log("Erro crítico no renderizar:", err);
             }
