@@ -23,7 +23,7 @@
         .mesas-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1rem; }
         @media(min-width: 640px) { .mesas-grid { grid-template-columns: repeat(4, 1fr); } }
         .mesa-card { background: #ef4444; border: 2px solid #b91c1c; border-radius: 0.75rem; padding: 1rem; cursor: pointer; display: flex; flex-direction: column; justify-content: space-between; height: 8rem; color: #000; }
-        .mesa-card.ocupada { border-color: #000; background: #f87171; }
+        .mesa-card.ocupada { border-color: #000; background: #fef08a; }
         .mesa-card.selecionada { border-color: #000; box-shadow: 0 0 0 3px rgba(0,0,0,0.3); }
         .painel-lateral { background: #b91c1c; border: 2px solid #991b1b; border-radius: 1rem; padding: 1.25rem; display: flex; flex-direction: column; color: #000; }
         .form-grupo { background: #ef4444; padding: 0.75rem; border-radius: 0.75rem; border: 2px solid #b91c1c; margin-bottom: 1rem; display: flex; flex-direction: column; gap: 0.5rem; }
@@ -85,7 +85,8 @@
             mesas: [],
             pessoas: [],
             pessoasNovas: [],
-            finalizadas: []
+            finalizadas: [],
+            frequentes: []
         };
         var PREFIXO_PESSOA = 'Pessoa: ';
 
@@ -300,6 +301,7 @@
                         if (data.produtos && data.produtos.length > 0) {
                             CARDAPIO = data.produtos;
                         }
+                        if (data.frequentes) estado.frequentes = data.frequentes;
                         if (data.pedidos) {
                             estado.pedidosGlobais = data.pedidos;
                             // pedidos enviados que o servidor ainda não gravou continuam na tela
@@ -365,8 +367,37 @@
         }
 
         function novaPessoa() {
-            var entrada = limparNome(prompt('Nome da pessoa:'));
+            fecharJanelaPessoa();
+            var chips = estado.frequentes.map(function(f) {
+                return '<button type="button" data-nome="' + esc(f.nome) + '" onclick="escolherPessoa(this.getAttribute(\'data-nome\'))" style="background:#fef08a; border:2px solid #000; margin:0.2rem; padding:0.35rem 0.7rem; border-radius:999px;">' + esc(f.nome) + ' <small>(' + f.n + 'x)</small></button>';
+            }).join('');
+            var el = document.createElement('div');
+            el.id = 'janela-pessoa';
+            el.style.cssText = 'position:fixed; inset:0; background:rgba(0,0,0,0.5); display:flex; align-items:center; justify-content:center; z-index:50; padding:1rem;';
+            el.innerHTML = '<div style="background:#fff; border:3px solid #000; border-radius:0.75rem; padding:1rem; width:100%; max-width:26rem; color:#000;">' +
+                '<h3 style="margin-bottom:0.75rem;">+ Nova Pessoa</h3>' +
+                (chips ? '<div style="font-size:0.8rem; margin-bottom:0.25rem;">Clientes frequentes:</div><div style="margin-bottom:0.75rem;">' + chips + '</div>' : '') +
+                '<label style="font-size:0.8rem;">' + (chips ? 'Ou digite outro nome (VIP = mensalista):' : 'Nome da pessoa (VIP = mensalista):') + '</label>' +
+                '<input type="text" id="input-nova-pessoa" maxlength="40" style="width:100%; margin:0.25rem 0 0.75rem;" onkeydown="if(event.key===\'Enter\') escolherPessoa(this.value)">' +
+                '<div style="display:flex; gap:0.5rem; justify-content:flex-end;">' +
+                    '<button type="button" onclick="fecharJanelaPessoa()" style="background:#fff; border:2px solid #000;">Cancelar</button>' +
+                    '<button type="button" onclick="escolherPessoa(document.getElementById(\'input-nova-pessoa\').value)" style="background:#facc15; border:2px solid #000;">Adicionar</button>' +
+                '</div></div>';
+            document.body.appendChild(el);
+            var inp = document.getElementById('input-nova-pessoa');
+            if (inp && inp.focus) inp.focus();
+        }
+        function fecharJanelaPessoa() {
+            var el = document.getElementById('janela-pessoa');
+            if (el && el.parentNode) el.parentNode.removeChild(el);
+        }
+        function escolherPessoa(valor) {
+            var entrada = limparNome(valor);
             if (!entrada) return;
+            fecharJanelaPessoa();
+            criarPessoa(entrada);
+        }
+        function criarPessoa(entrada) {
             var chave;
             var up = entrada.toUpperCase();
             if (up === 'VIP') {
