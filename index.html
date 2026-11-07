@@ -66,6 +66,60 @@
     <script>
         var API_URL = "https://script.google.com/macros/s/AKfycbwvI5hgSTG-T0EpHk9pNHqe31ex0P9EQb_TixFis94UcaHF45F-SWS2T3fBfPedMRY7/exec";
 
+        // ---------- código de acesso da equipe ----------
+        // Todas as chamadas ao servidor levam o código; sem ele o servidor não responde. O código não fica no site:
+        // é digitado uma vez em cada aparelho.
+        var CHAVE = '';
+        try { CHAVE = localStorage.getItem('lcb_chave') || ''; } catch (e) {}
+        var fetchOriginal = fetch;
+        fetch = function(u, o) {
+            if (String(u).indexOf(API_URL) !== 0) return fetchOriginal(u, o);
+            if (!CHAVE) { pedirChave(''); return Promise.reject(new Error('sem código de acesso')); }
+            if (o && o.method === 'POST') {
+                var corpo = {};
+                try { corpo = JSON.parse(o.body); } catch (e) {}
+                corpo.chave = CHAVE;
+                var o2 = {}; for (var k in o) o2[k] = o[k];
+                o2.body = JSON.stringify(corpo);
+                return fetchOriginal(u, o2);
+            }
+            u = String(u) + (String(u).indexOf('?') >= 0 ? '&' : '?') + 'chave=' + encodeURIComponent(CHAVE);
+            return fetchOriginal(u, o).then(function(res) {
+                return res.clone().json().then(function(j) {
+                    if (j && j.negado) {
+                        var bloqueado = String(j.error || '').indexOf('Muitas') === 0;
+                        if (!bloqueado) { CHAVE = ''; try { localStorage.removeItem('lcb_chave'); } catch (e) {} }
+                        pedirChave(j.error || 'Acesso negado.');
+                    }
+                    return res;
+                }).catch(function() { return res; });
+            });
+        };
+        function pedirChave(aviso) {
+            if (document.getElementById('janela-chave')) return;
+            var el = document.createElement('div');
+            el.id = 'janela-chave';
+            el.style.cssText = 'position:fixed; inset:0; background:#000; display:flex; align-items:center; justify-content:center; z-index:100; padding:1rem;';
+            el.innerHTML = '<div style="background:#fff; border:3px solid #000; border-radius:0.75rem; padding:1.25rem; width:100%; max-width:22rem; color:#000;">' +
+                '<h3 style="margin-bottom:0.75rem;">🔒 Lugar Comum Bar</h3>' +
+                (aviso ? '<p style="color:#b91c1c; font-weight:bold; margin-bottom:0.5rem;">' + esc(aviso) + '</p>' : '') +
+                '<label style="font-size:0.85rem;">Código de acesso da equipe:</label>' +
+                '<input type="password" id="input-chave" autocomplete="off" style="width:100%; margin:0.25rem 0 0.75rem;" onkeydown="if(event.key===\'Enter\') entrarComChave(this.value)">' +
+                '<button type="button" onclick="entrarComChave(document.getElementById(\'input-chave\').value)" style="background:#facc15; border:2px solid #000; width:100%;">Entrar</button></div>';
+            document.body.appendChild(el);
+            var inp = document.getElementById('input-chave');
+            if (inp && inp.focus) inp.focus();
+        }
+        function entrarComChave(v) {
+            v = String(v || '').trim();
+            if (!v) return;
+            CHAVE = v;
+            try { localStorage.setItem('lcb_chave', v); } catch (e) {}
+            var el = document.getElementById('janela-chave');
+            if (el && el.parentNode) el.parentNode.removeChild(el);
+            sincronizar();
+        }
+
         // Cardápio de segurança preenchido para garantir funcionamento imediato
         var CARDAPIO = [
             { nome: "Refrigerante", preco: 6.00, estoque: 50, tipo: "bar" },
@@ -976,6 +1030,7 @@
 
         // Executa imediatamente e sincroniza em segundo plano
         renderizar();
+        if (!CHAVE) pedirChave('');
         sincronizar();
         setInterval(sincronizar, 5000);
     </script>
