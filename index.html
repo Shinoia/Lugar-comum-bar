@@ -695,7 +695,7 @@
             var linhas = m.itens.map(function(it) {
                 return '<div style="display:flex; justify-content:space-between; gap:0.5rem; font-size:0.85rem;"><span>' + it.qnt + 'x ' + esc(it.produto) + '</span><span>' + brl(it.qnt * it.preco) + '</span></div>';
             }).join('') || '<div style="font-size:0.85rem;">Sem itens lançados.</div>';
-            var precisaForma = !m.vip && m.itens.length > 0;
+            var precisaForma = m.itens.length > 0;
             var botoes = '';
             if (precisaForma) {
                 botoes = '<div style="font-size:0.85rem; margin:0.75rem 0 0.25rem;"><b>Forma de pagamento:</b> <span style="color:#b91c1c;">' + (f.forma ? '' : '(escolha uma)') + '</span></div><div style="display:grid; grid-template-columns:1fr 1fr; gap:0.5rem;">' +
@@ -705,14 +705,14 @@
                     }).join('') + '</div>';
             }
             el.innerHTML = '<div style="background:#fff; border:3px solid #000; border-radius:0.75rem; padding:1rem; width:100%; max-width:26rem; color:#000; max-height:90vh; overflow:auto;">' +
-                '<h3 style="margin-bottom:0.5rem;">' + (m.vip ? 'Guardar na conta VIP: ' : 'Fechar ') + esc(nomeMesa(m)) + '</h3>' +
+                '<h3 style="margin-bottom:0.5rem;">Fechar ' + esc(nomeMesa(m)) + '</h3>' + (m.vip ? '<div style="font-size:0.75rem; margin-bottom:0.5rem;">⭐ Conta VIP (mensal): vai para a aba VIP e não entra no caixa do dia.</div>' : '') +
                 '<div style="display:flex; flex-direction:column; gap:0.2rem; margin-bottom:0.5rem;">' + linhas + '</div>' +
                 '<div style="display:flex; justify-content:space-between; font-weight:bold; border-top:1px dashed #000; padding-top:0.4rem;"><span>TOTAL</span><span>' + brl(totalMesaObj(m)) + '</span></div>' +
                 botoes +
                 '<div style="display:flex; gap:0.5rem; margin-top:1rem; flex-wrap:wrap;">' +
                     '<button type="button" onclick="imprimirFechamento()" style="background:#fff; border:2px solid #000; flex:1;">🖨️ Imprimir comanda</button>' +
                     '<button type="button" onclick="fecharJanelaFechamento()" style="background:#fff; border:2px solid #000;">Cancelar</button>' +
-                    '<button type="button" onclick="confirmarFechamento()" style="background:#f87171; border:2px solid #000; flex:1;">' + (m.vip ? 'Guardar na conta' : 'Confirmar fechamento') + '</button>' +
+                    '<button type="button" onclick="confirmarFechamento()" style="background:#f87171; border:2px solid #000; flex:1;">' + 'Confirmar fechamento' + '</button>' +
                 '</div></div>';
         }
         function escolherForma(fp) { if (estado.fechamento) { estado.fechamento.forma = fp; desenharFechamento(); } }
@@ -734,7 +734,7 @@
         function confirmarFechamento() {
             var f = estado.fechamento, mesaObj = f && acharMesa(f.id);
             if (!mesaObj) { fecharJanelaFechamento(); return; }
-            var precisaForma = !mesaObj.vip && mesaObj.itens.length > 0;
+            var precisaForma = mesaObj.itens.length > 0;
             if (precisaForma && !f.forma) { alert('Selecione a forma de pagamento: Débito, Crédito, PIX ou Dinheiro.'); return; }
             var forma = precisaForma ? f.forma : '';
             fecharJanelaFechamento();
@@ -889,6 +889,84 @@
                 });
         }
 
+        // Painel lateral de uma comanda: lançar produtos, itens, imprimir e fechar (usado no Caixa e em Abertas)
+        function htmlPainelMesa(mesaSel) {
+            var listaHtml = '';
+            var valorTotalComanda = 0;
+
+            if (mesaSel.itens.length === 0) {
+                listaHtml = '<p style="text-align: center; padding: 1rem;">Nenhum item lançado.</p>';
+            } else {
+                for (var j = 0; j < mesaSel.itens.length; j++) {
+                    var item = mesaSel.itens[j];
+                    var stPreparo = item.statusPreparo || 'pendente';
+                    var subtotal = item.qnt * item.preco;
+                    valorTotalComanda += subtotal;
+
+                    var botoesCancel = (item.qnt > 1
+                        ? '<button onclick="event.stopPropagation(); cancelarItem(' + item.idItem + ', 1)" title="Remover 1 unidade" style="background:#fff; border:2px solid #000; padding:0.2rem 0.5rem; font-size:0.75rem;">−1</button>'
+                        : '') +
+                        '<button onclick="event.stopPropagation(); cancelarItem(' + item.idItem + ', ' + item.qnt + ')" title="Cancelar o item" style="background:#fff; border:2px solid #000; padding:0.2rem 0.5rem; font-size:0.75rem;">✕ Cancelar</button>';
+
+                    listaHtml += '<div class="item-row">' +
+                        '<div><strong>' + item.qnt + 'x ' + esc(item.produto) + '</strong><br>' +
+                        '<small>Preço: ' + brl(item.preco) + ' | Subtotal: ' + brl(subtotal) + '</small>' + htmlObs(item.obs, false) + '<br>' +
+                        '<span class="badge" style="background:' + corStatus(stPreparo) + '; margin-top:2px; display:inline-block;">Status: ' + stPreparo.toUpperCase() + '</span></div>' +
+                        '<div style="display:flex; flex-direction:column; gap:0.25rem;">' + botoesCancel + '</div>' +
+                    '</div>';
+                }
+            }
+
+            var opcoesHtml = '';
+            for (var c = 0; c < CARDAPIO.length; c++) {
+                var pItem = CARDAPIO[c];
+                var esgotado = estoqueDisponivel(pItem.nome) <= 0;
+                if (esgotado) continue; // estoque 0 na planilha: não aparece no site
+                var selecionadoAttr = (pItem.nome === estado.produtoSelecionadoCache) ? 'selected' : '';
+                var disp = estoqueDisponivel(pItem.nome);
+                opcoesHtml += '<option value="' + esc(pItem.nome) + '" ' + selecionadoAttr + (esgotado ? ' disabled' : '') + '>' + esc(pItem.nome) + ' - ' + brl(pItem.preco) + (esgotado ? ' - ESGOTADO' : ' - ' + disp + ' un') + '</option>';
+            }
+
+
+            if (!opcoesHtml) opcoesHtml = '<option value="" disabled selected>Nenhum produto disponível</option>';
+
+            return '<div class="painel-lateral">' +
+                '<div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #991b1b; padding-bottom: 0.75rem; margin-bottom: 1rem;">' +
+                    '<h3>' + esc(nomeMesa(mesaSel)) + '</h3>' +
+                    '<div style="display:flex; gap:0.4rem;"><button data-id="' + esc(mesaSel.id) + '" onclick="imprimirAberta(this.getAttribute(\'data-id\'))" title="Imprimir conferência na térmica" style="background:#fff; border: 2px solid #000; padding: 0.25rem 0.5rem; border-radius: 0.5rem;">🖨️</button>' +
+                    '<button data-id="' + esc(mesaSel.id) + '" onclick="fecharMesa(this.getAttribute(\'data-id\'))" style="background: #f87171; border: 2px solid #000; padding: 0.25rem 0.5rem; border-radius: 0.5rem;">' + 'Fechar Conta' + '</button></div>' +
+                '</div>' +
+                (mesaSel.vip
+                    ? '<div style="margin-bottom: 1rem; font-size: 0.875rem; font-weight: normal;">Total: ' + brl(valorTotalComanda) + '</div>'
+                    : '<div style="background: #facc15; border: 2px solid #000; padding: 0.5rem; border-radius: 0.5rem; margin-bottom: 1rem; text-align: center;">' +
+                        '<strong style="font-size: 1rem;">Total Comanda: ' + brl(valorTotalComanda) + '</strong>' +
+                      '</div>') +
+                '<div class="form-grupo">' +
+                    '<label style="font-size: 0.75rem;">SELECIONAR PRODUTO</label>' +
+                    '<select id="select-produto">' + opcoesHtml + '</select>' +
+                    '<div style="margin-top: 0.5rem;"><label style="font-size:0.65rem;">Qtd Solicitada:</label><input type="number" id="input-qtd" value="' + estado.quantidadeCache + '" min="1" style="text-align: center;" oninput="estado.quantidadeCache = this.value"></div>' +
+                    '<div style="margin-top: 0.5rem;"><label style="font-size:0.65rem;">Observação (ex.: sem cebola, sem gelo, sem álcool):</label><input type="text" id="input-obs" maxlength="60" placeholder="Opcional" value="' + esc(estado.obsCache) + '" oninput="estado.obsCache = this.value"></div>' +
+                    '<button onclick="adicionarItem()" class="btn-lancar" style="margin-top:0.5rem;">Lançar Pedido</button>' +
+                '</div>' +
+                '<div class="lista-itens">' + listaHtml + '</div>' +
+            '</div>';
+
+        }
+
+        // itens ainda não entregues de cada setor (o mesmo que aparece nos cartões do Bar / Cozinha)
+        function contarKDS(ehCozinha) {
+            var n = 0, ms = todasMesas();
+            for (var a = 0; a < ms.length; a++) {
+                if (ms[a].status !== 'ocupada') continue;
+                for (var b = 0; b < ms[a].itens.length; b++) {
+                    var it = ms[a].itens[b], t = (it.tipo || 'bar').toLowerCase();
+                    var coz = t.includes('cozinha') || t.includes('petisco') || t.includes('comida');
+                    if (it.statusPreparo !== 'entregue' && coz === ehCozinha) n++;
+                }
+            }
+            return n;
+        }
+
         function renderizar() {
             try {
                 capturarValoresFormulario();
@@ -900,65 +978,7 @@
                     var lateral = '';
 
                     if (mesaSel) {
-                        var listaHtml = '';
-                        var valorTotalComanda = 0;
-
-                        if (mesaSel.itens.length === 0) {
-                            listaHtml = '<p style="text-align: center; padding: 1rem;">Nenhum item lançado.</p>';
-                        } else {
-                            for (var j = 0; j < mesaSel.itens.length; j++) {
-                                var item = mesaSel.itens[j];
-                                var stPreparo = item.statusPreparo || 'pendente';
-                                var subtotal = item.qnt * item.preco;
-                                valorTotalComanda += subtotal;
-
-                                var botoesCancel = (item.qnt > 1
-                                    ? '<button onclick="event.stopPropagation(); cancelarItem(' + item.idItem + ', 1)" title="Remover 1 unidade" style="background:#fff; border:2px solid #000; padding:0.2rem 0.5rem; font-size:0.75rem;">−1</button>'
-                                    : '') +
-                                    '<button onclick="event.stopPropagation(); cancelarItem(' + item.idItem + ', ' + item.qnt + ')" title="Cancelar o item" style="background:#fff; border:2px solid #000; padding:0.2rem 0.5rem; font-size:0.75rem;">✕ Cancelar</button>';
-
-                                listaHtml += '<div class="item-row">' +
-                                    '<div><strong>' + item.qnt + 'x ' + esc(item.produto) + '</strong><br>' +
-                                    '<small>Preço: ' + brl(item.preco) + ' | Subtotal: ' + brl(subtotal) + '</small>' + htmlObs(item.obs, false) + '<br>' +
-                                    '<span class="badge" style="background:' + corStatus(stPreparo) + '; margin-top:2px; display:inline-block;">Status: ' + stPreparo.toUpperCase() + '</span></div>' +
-                                    '<div style="display:flex; flex-direction:column; gap:0.25rem;">' + botoesCancel + '</div>' +
-                                '</div>';
-                            }
-                        }
-
-                        var opcoesHtml = '';
-                        for (var c = 0; c < CARDAPIO.length; c++) {
-                            var pItem = CARDAPIO[c];
-                            var esgotado = estoqueDisponivel(pItem.nome) <= 0;
-                            if (esgotado) continue; // estoque 0 na planilha: não aparece no site
-                            var selecionadoAttr = (pItem.nome === estado.produtoSelecionadoCache) ? 'selected' : '';
-                            var disp = estoqueDisponivel(pItem.nome);
-                            opcoesHtml += '<option value="' + esc(pItem.nome) + '" ' + selecionadoAttr + (esgotado ? ' disabled' : '') + '>' + esc(pItem.nome) + ' - ' + brl(pItem.preco) + (esgotado ? ' - ESGOTADO' : ' - ' + disp + ' un') + '</option>';
-                        }
-
-
-                        if (!opcoesHtml) opcoesHtml = '<option value="" disabled selected>Nenhum produto disponível</option>';
-
-                        lateral = '<div class="painel-lateral">' +
-                            '<div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #991b1b; padding-bottom: 0.75rem; margin-bottom: 1rem;">' +
-                                '<h3>' + esc(nomeMesa(mesaSel)) + '</h3>' +
-                                '<div style="display:flex; gap:0.4rem;"><button data-id="' + esc(mesaSel.id) + '" onclick="imprimirAberta(this.getAttribute(\'data-id\'))" title="Imprimir conferência na térmica" style="background:#fff; border: 2px solid #000; padding: 0.25rem 0.5rem; border-radius: 0.5rem;">🖨️</button>' +
-                                '<button data-id="' + esc(mesaSel.id) + '" onclick="fecharMesa(this.getAttribute(\'data-id\'))" style="background: #f87171; border: 2px solid #000; padding: 0.25rem 0.5rem; border-radius: 0.5rem;">' + (mesaSel.vip ? 'Guardar na conta VIP' : 'Fechar Conta') + '</button></div>' +
-                            '</div>' +
-                            (mesaSel.vip
-                                ? '<div style="margin-bottom: 1rem; font-size: 0.875rem; font-weight: normal;">Total: ' + brl(valorTotalComanda) + '</div>'
-                                : '<div style="background: #facc15; border: 2px solid #000; padding: 0.5rem; border-radius: 0.5rem; margin-bottom: 1rem; text-align: center;">' +
-                                    '<strong style="font-size: 1rem;">Total Comanda: ' + brl(valorTotalComanda) + '</strong>' +
-                                  '</div>') +
-                            '<div class="form-grupo">' +
-                                '<label style="font-size: 0.75rem;">SELECIONAR PRODUTO</label>' +
-                                '<select id="select-produto">' + opcoesHtml + '</select>' +
-                                '<div style="margin-top: 0.5rem;"><label style="font-size:0.65rem;">Qtd Solicitada:</label><input type="number" id="input-qtd" value="' + estado.quantidadeCache + '" min="1" style="text-align: center;" oninput="estado.quantidadeCache = this.value"></div>' +
-                                '<div style="margin-top: 0.5rem;"><label style="font-size:0.65rem;">Observação (ex.: sem cebola, sem gelo, sem álcool):</label><input type="text" id="input-obs" maxlength="60" placeholder="Opcional" value="' + esc(estado.obsCache) + '" oninput="estado.obsCache = this.value"></div>' +
-                                '<button onclick="adicionarItem()" class="btn-lancar" style="margin-top:0.5rem;">Lançar Pedido</button>' +
-                            '</div>' +
-                            '<div class="lista-itens">' + listaHtml + '</div>' +
-                        '</div>';
+                        lateral = htmlPainelMesa(mesaSel);
                     } else {
                         lateral = '<div class="painel-lateral" style="justify-content: center; align-items: center; text-align: center;"><p>👆 Clique em uma mesa ao lado para gerenciar.</p></div>';
                     }
@@ -1014,35 +1034,39 @@
                             linhasAb += '<div style="display:flex; justify-content:space-between; gap:0.5rem; font-size:0.85rem;"><span>' + ia.qnt + 'x ' + esc(ia.produto) + (ia.obs ? ' <small>(📝 ' + esc(ia.obs) + ')</small>' : '') + '</span>' +
                                 '<span class="badge" style="background:' + corStatus(ia.statusPreparo || 'pendente') + ';">' + String(ia.statusPreparo || 'pendente').toUpperCase() + '</span></div>';
                         }
-                        var cartaoAb = '<div class="mesa-card ocupada" style="height:auto; gap:0.5rem; cursor:default;">' +
+                        var cartaoAb = '<div class="mesa-card ocupada' + (String(ma.id) === String(estado.mesaSelecionadaId) ? ' selecionada' : '') + '" style="height:auto; gap:0.5rem; cursor:default;">' +
                             '<div style="display:flex; justify-content:space-between;"><strong>' + esc(nomeMesa(ma)) + '</strong>' + (ma.vip ? '<span style="font-size:0.875rem; font-weight:normal;">' + brl(totalMesaObj(ma)) + '</span>' : '<strong>' + brl(totalMesaObj(ma)) + '</strong>') + '</div>' +
                             (ma.abertaEm ? '<small>Aberta em ' + esc(ma.abertaEm) + '</small>' : '') +
                             '<div style="display:flex; flex-direction:column; gap:0.25rem;">' + linhasAb + '</div>' +
-                            '<div style="display:flex; gap:0.4rem; flex-wrap:wrap;"><button data-id="' + esc(ma.id) + '" onclick="abrirNaCaixa(this.getAttribute(\'data-id\'))" style="background:#fff; border:2px solid #000; flex:1;">➕ Incluir produtos</button>' +
-                            '<button data-id="' + esc(ma.id) + '" onclick="fecharMesa(this.getAttribute(\'data-id\'))" style="background:#f87171; border:2px solid #000; flex:1;">' + (ma.vip ? '📥 Guardar conta' : '💳 Fechar comanda') + '</button>' +
+                            '<div style="display:flex; gap:0.4rem; flex-wrap:wrap;"><button data-id="' + esc(ma.id) + '" onclick="selecionarMesa(this.getAttribute(\'data-id\'))" style="background:#fff; border:2px solid #000; flex:1;">➕ Incluir produtos</button>' +
+                            '<button data-id="' + esc(ma.id) + '" onclick="fecharMesa(this.getAttribute(\'data-id\'))" style="background:#f87171; border:2px solid #000; flex:1;">💳 Fechar comanda</button>' +
                             '<button data-id="' + esc(ma.id) + '" onclick="imprimirAberta(this.getAttribute(\'data-id\'))" title="Imprimir na térmica" style="background:#fff; border:2px solid #000;">🖨️</button></div>' +
                         '</div>';
                         if (ma.vip) vipAbHtml += cartaoAb; else abHtml += cartaoAb;
                     }
                     var totalVipAb = vipLista.reduce(function(a, m) { return a + totalMesaObj(m); }, 0);
-                    main.innerHTML = '<div>' +
+                    var mesaSelAb = acharMesa(estado.mesaSelecionadaId);
+                    var lateralAb = mesaSelAb
+                        ? htmlPainelMesa(mesaSelAb)
+                        : '<div class="painel-lateral" style="justify-content: center; align-items: center; text-align: center;"><p>👆 Clique em "➕ Incluir produtos" em uma comanda para lançar pedidos aqui.</p></div>';
+                    main.innerHTML = '<div class="grid-caixa"><div>' +
                         '<div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.75rem; margin-bottom:1rem;">' +
                             '<h2 style="color:#000;">📋 Mesas abertas: ' + abertasLista.length + ' | ' + brl(totalAbertas) + '</h2>' +
                             '<button onclick="encerrarTodas()" style="background:#f87171; border:2px solid #000;"' + (abertasLista.length === 0 ? ' disabled' : '') + '>🔒 Encerrar todas (senha)</button>' +
                         '</div>' +
                         (abHtml ? '<div class="mesas-grid">' + abHtml + '</div>' : '<p style="color:#000; font-weight:bold; padding:2rem; text-align:center;">Nenhuma mesa em aberto.</p>') +
                         (vipAbHtml ? '<h2 style="color:#000; margin: 1.5rem 0 0.5rem;">⭐ VIP em aberto: ' + vipLista.length + '</h2><p style="color:#000; font-size:0.875rem; font-weight:normal; margin-bottom:0.25rem;">Total: ' + brl(totalVipAb) + '</p><p style="color:#000; font-size:0.8rem; margin-bottom:0.75rem;">Contas mensais: não entram no "Encerrar todas" nem no fechamento do dia.</p><div class="mesas-grid">' + vipAbHtml + '</div>' : '') +
-                    '</div>';
+                    '</div>' + lateralAb + '</div>';
                 } else if (estado.abaAtiva === 'finalizadas') {
-                    var finHtml = '', totalFin = 0, porForma = {};
+                    var finHtml = '', totalFin = 0, porForma = {}, totalVipFin = 0;
                     estado.finalizadas.forEach(function(f) {
-                        totalFin += f.total;
-                        var nf = f.forma || 'Sem forma'; porForma[nf] = (porForma[nf] || 0) + f.total;
+                        if (ehVip(f.mesa)) { totalVipFin += f.total; }
+                        else { totalFin += f.total; var nf = f.forma || 'Sem forma'; porForma[nf] = (porForma[nf] || 0) + f.total; }
                         var linhasF = f.itens.map(function(it) {
                             return '<div style="display:flex; justify-content:space-between; gap:0.5rem; font-size:0.85rem;"><span>' + it.qnt + 'x ' + esc(it.produto) + (it.obs ? ' <small>(📝 ' + esc(it.obs) + ')</small>' : '') + (soHora(it.pedidoEm) ? ' <small>às ' + esc(soHora(it.pedidoEm)) + '</small>' : '') + '</span><span>' + brl(it.qnt * it.preco) + '</span></div>';
                         }).join('');
                         finHtml += '<div class="mesa-card" style="height:auto; gap:0.5rem; cursor:default;">' +
-                            '<div style="display:flex; justify-content:space-between;"><strong>' + esc(rotuloChave(f.mesa)) + '</strong><strong>' + brl(f.total) + '</strong></div>' +
+                            '<div style="display:flex; justify-content:space-between;"><strong>' + (ehVip(f.mesa) ? '⭐ ' : '') + esc(rotuloChave(f.mesa)) + '</strong><strong>' + brl(f.total) + '</strong></div>' +
                             '<small>Aberta: ' + esc(f.abertura) + '<br>Fechada: ' + esc(f.tchau) + (f.forma ? '<br>💳 Pagamento: <b>' + esc(f.forma) + '</b>' : '') + '</small>' +
                             '<div style="display:flex; flex-direction:column; gap:0.25rem;">' + linhasF + '</div>' +
                             '<div style="display:flex; gap:0.5rem;"><button data-k="' + esc(f.k) + '" onclick="imprimirFinalizada(this.getAttribute(\'data-k\'))" style="background:#fff; border:2px solid #000; flex:1;">🖨️ Imprimir</button>' +
@@ -1053,7 +1077,7 @@
                     main.innerHTML = '<div>' +
                         '<div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.75rem; margin-bottom:1rem;">' +
                             '<div><h2 style="color:#000;">✅ Comandas finalizadas: ' + estado.finalizadas.length + ' | ' + brl(totalFin) + '</h2>' +
-                            '<div style="color:#000; font-size:0.85rem;">' + Object.keys(porForma).map(function(k) { return esc(k) + ': <b>' + brl(porForma[k]) + '</b>'; }).join(' &nbsp;|&nbsp; ') + '</div></div>' +
+                            '<div style="color:#000; font-size:0.85rem;">' + Object.keys(porForma).map(function(k) { return esc(k) + ': <b>' + brl(porForma[k]) + '</b>'; }).join(' &nbsp;|&nbsp; ') + (totalVipFin > 0 ? '<br>⭐ VIP (mensal, fora do caixa): <b>' + brl(totalVipFin) + '</b>' : '') + '</div></div>' +
                             '<div style="display:flex; gap:0.75rem; align-items:center; flex-wrap:wrap; color:#000; font-size:0.85rem;">' +
                                 '<label>Papel: <select onchange="mudarPapel(this.value)" style="width:auto;"><option value="80"' + (papel === '80' ? ' selected' : '') + '>80 mm</option><option value="58"' + (papel === '58' ? ' selected' : '') + '>58 mm</option></select></label>' +
                                 '<label><input type="checkbox" onchange="mudarAutoImp(this)"' + (lerConfig('autoimp', '0') === '1' ? ' checked' : '') + ' style="width:auto;"> Imprimir ao fechar a conta</label>' +
@@ -1111,6 +1135,9 @@
                     var tituloPainel = ehCozinha ? '🍳 Cozinha' : '🍻 Bar';
                     main.innerHTML = '<div><h2 style="margin-bottom: 1rem; color:#000;">' + tituloPainel + '</h2><div class="kds-grid">' + kdsHtml + '</div></div>';
                 }
+                var btnBar2 = document.getElementById('btn-aba-bar'), btnCoz2 = document.getElementById('btn-aba-cozinha');
+                if (btnBar2) { var nBar = contarKDS(false); btnBar2.textContent = '🍻 Bar' + (nBar > 0 ? ' (' + nBar + ')' : ''); }
+                if (btnCoz2) { var nCoz = contarKDS(true); btnCoz2.textContent = '🍳 Cozinha' + (nCoz > 0 ? ' (' + nCoz + ')' : ''); }
                 var btnAb = document.getElementById('btn-aba-abertas');
                 if (btnAb) {
                     var nAb = todasMesas().filter(function(m) { return m.status === 'ocupada' && m.itens.length > 0 && !m.vip; }).length;
