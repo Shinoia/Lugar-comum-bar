@@ -173,7 +173,8 @@
             pessoasNovas: [],
             finalizadas: [],
             frequentes: [],
-            usuario: null
+            usuario: null,
+            fechamento: null
         };
         var PREFIXO_PESSOA = 'Pessoa: ';
 
@@ -297,7 +298,7 @@
                     if (!p || !p.mesa) continue;
                     if (p.status === 'fechado') {
                         var kf = String(p.mesa) + '|' + String(p.tchau);
-                        if (!finMapa[kf]) { finMapa[kf] = { k: kf, mesa: String(p.mesa), tchau: String(p.tchau), abertura: p.oi || '', itens: [], total: 0 }; finLista.push(finMapa[kf]); }
+                        if (!finMapa[kf]) { finMapa[kf] = { k: kf, mesa: String(p.mesa), tchau: String(p.tchau), abertura: p.oi || '', itens: [], total: 0, forma: p.forma || '' }; finLista.push(finMapa[kf]); }
                         var pcf = CARDAPIO.find(function(c) { return c.nome && c.nome.toLowerCase() === String(p.produto).toLowerCase(); });
                         var prf = p.preco || (pcf ? pcf.preco : 0);
                         finMapa[kf].itens.push({ produto: p.produto, qnt: Number(p.qnt || 1), preco: prf, obs: p.obs || '', pedidoEm: p.pedidoEm || p.oi || '' });
@@ -672,22 +673,79 @@
                 .catch(function() { alert('Falha de conexão. Tente novamente.'); });
         }
 
+        var FORMAS_PAGAMENTO = ['Débito', 'Crédito', 'PIX', 'Dinheiro'];
+        // Passo 1: abre a janela de fechamento (escolha da forma de pagamento + imprimir)
         function fecharMesa(id) {
             var mesaObj = acharMesa(id);
             if (!mesaObj) return;
-            var idAlvo = mesaObj.pessoa ? mesaObj.id : (mesaObj.idExibicao || id);
-            if (!confirm(mesaObj.vip ? ("Guardar o consumo de " + nomeMesa(mesaObj) + " na conta VIP (aba VIP da planilha)?") : ("Fechar " + nomeMesa(mesaObj) + "?"))) return;
+            estado.fechamento = { id: mesaObj.id, forma: '' };
+            fecharJanelaFechamento();
+            var el = document.createElement('div');
+            el.id = 'janela-fechamento';
+            el.style.cssText = 'position:fixed; inset:0; background:rgba(0,0,0,0.5); display:flex; align-items:center; justify-content:center; z-index:60; padding:1rem;';
+            document.body.appendChild(el);
+            desenharFechamento();
+        }
+        function desenharFechamento() {
+            var el = document.getElementById('janela-fechamento');
+            var f = estado.fechamento;
+            if (!el || !f) return;
+            var m = acharMesa(f.id);
+            if (!m) { fecharJanelaFechamento(); return; }
+            var linhas = m.itens.map(function(it) {
+                return '<div style="display:flex; justify-content:space-between; gap:0.5rem; font-size:0.85rem;"><span>' + it.qnt + 'x ' + esc(it.produto) + '</span><span>' + brl(it.qnt * it.preco) + '</span></div>';
+            }).join('') || '<div style="font-size:0.85rem;">Sem itens lançados.</div>';
+            var precisaForma = !m.vip && m.itens.length > 0;
+            var botoes = '';
+            if (precisaForma) {
+                botoes = '<div style="font-size:0.85rem; margin:0.75rem 0 0.25rem;"><b>Forma de pagamento:</b> <span style="color:#b91c1c;">' + (f.forma ? '' : '(escolha uma)') + '</span></div><div style="display:grid; grid-template-columns:1fr 1fr; gap:0.5rem;">' +
+                    FORMAS_PAGAMENTO.map(function(fp) {
+                        var sel = f.forma === fp;
+                        return '<button type="button" data-forma="' + esc(fp) + '" onclick="escolherForma(this.getAttribute(\'data-forma\'))" style="border:2px solid #000; padding:0.6rem; font-weight:bold; background:' + (sel ? '#4ade80' : '#fff') + ';">' + (sel ? '✔ ' : '') + esc(fp) + '</button>';
+                    }).join('') + '</div>';
+            }
+            el.innerHTML = '<div style="background:#fff; border:3px solid #000; border-radius:0.75rem; padding:1rem; width:100%; max-width:26rem; color:#000; max-height:90vh; overflow:auto;">' +
+                '<h3 style="margin-bottom:0.5rem;">' + (m.vip ? 'Guardar na conta VIP: ' : 'Fechar ') + esc(nomeMesa(m)) + '</h3>' +
+                '<div style="display:flex; flex-direction:column; gap:0.2rem; margin-bottom:0.5rem;">' + linhas + '</div>' +
+                '<div style="display:flex; justify-content:space-between; font-weight:bold; border-top:1px dashed #000; padding-top:0.4rem;"><span>TOTAL</span><span>' + brl(totalMesaObj(m)) + '</span></div>' +
+                botoes +
+                '<div style="display:flex; gap:0.5rem; margin-top:1rem; flex-wrap:wrap;">' +
+                    '<button type="button" onclick="imprimirFechamento()" style="background:#fff; border:2px solid #000; flex:1;">🖨️ Imprimir comanda</button>' +
+                    '<button type="button" onclick="fecharJanelaFechamento()" style="background:#fff; border:2px solid #000;">Cancelar</button>' +
+                    '<button type="button" onclick="confirmarFechamento()" style="background:#f87171; border:2px solid #000; flex:1;">' + (m.vip ? 'Guardar na conta' : 'Confirmar fechamento') + '</button>' +
+                '</div></div>';
+        }
+        function escolherForma(fp) { if (estado.fechamento) { estado.fechamento.forma = fp; desenharFechamento(); } }
+        function fecharJanelaFechamento() {
+            var el = document.getElementById('janela-fechamento');
+            if (el && el.parentNode) el.parentNode.removeChild(el);
+        }
+        function reciboDaMesa(m, forma, tipo) {
+            var c = { mesa: String(m.pessoa ? m.id : (m.idExibicao || m.id)), tchau: agoraBR(), abertura: m.abertaEm || '', itens: [], total: 0, forma: forma || '' };
+            m.itens.forEach(function(it) { c.itens.push({ produto: it.produto, qnt: it.qnt, preco: it.preco, obs: it.obs || '', pedidoEm: '' }); c.total += it.qnt * it.preco; });
+            return c;
+        }
+        function imprimirFechamento() {
+            var f = estado.fechamento, m = f && acharMesa(f.id);
+            if (!m || m.itens.length === 0) { alert('Nenhum item lançado para imprimir.'); return; }
+            imprimirHtml(htmlRecibo(reciboDaMesa(m, f.forma), f.forma ? 'FINAL' : 'CONFERENCIA'));
+        }
+        // Passo 2: confirma (exige a forma de pagamento) e fecha
+        function confirmarFechamento() {
+            var f = estado.fechamento, mesaObj = f && acharMesa(f.id);
+            if (!mesaObj) { fecharJanelaFechamento(); return; }
+            var precisaForma = !mesaObj.vip && mesaObj.itens.length > 0;
+            if (precisaForma && !f.forma) { alert('Selecione a forma de pagamento: Débito, Crédito, PIX ou Dinheiro.'); return; }
+            var forma = precisaForma ? f.forma : '';
+            fecharJanelaFechamento();
+            estado.fechamento = null;
+            var idAlvo = mesaObj.pessoa ? mesaObj.id : (mesaObj.idExibicao || mesaObj.id);
             if (mesaObj.pessoa) {
                 estado.pessoasNovas = estado.pessoasNovas.filter(function(n) { return n !== mesaObj.id; });
             }
             // recibo final (impressão automática ao fechar, se marcada)
             if (lerConfig('autoimp', '0') === '1' && mesaObj.itens.length > 0) {
-                var snap = { mesa: String(idAlvo), tchau: agoraBR(), abertura: mesaObj.abertaEm || '', itens: [], total: 0 };
-                mesaObj.itens.forEach(function(it) {
-                    snap.itens.push({ produto: it.produto, qnt: it.qnt, preco: it.preco, obs: it.obs || '', pedidoEm: '' });
-                    snap.total += it.qnt * it.preco;
-                });
-                imprimirHtml(htmlRecibo(snap, 'FINAL'));
+                imprimirHtml(htmlRecibo(reciboDaMesa(mesaObj, forma), 'FINAL'));
             }
 
             var aposFechar = function() {
@@ -697,7 +755,7 @@
                 }, 800);
             };
             // GET primeiro (o servidor novo também gera o PDF no Drive); se o script for antigo, usa o POST de antes
-            fetch(API_URL + '?acao=fechar_mesa&mesa=' + encodeURIComponent(idAlvo))
+            fetch(API_URL + '?acao=fechar_mesa&mesa=' + encodeURIComponent(idAlvo) + '&forma=' + encodeURIComponent(forma))
                 .then(function(res) { return res.json(); })
                 .then(function(r) {
                     if (r && r.result === 'success') { aposFechar(); return; }
@@ -743,7 +801,7 @@
                 if (it.obs) linhas += '<div class="s">* ' + esc(it.obs) + '</div>';
             });
             var dataDia = (String(c.tchau || agoraBR()).match(/\d{2}\/\d{2}\/\d{4}/) || [''])[0];
-            var fech = tipo === 'FINAL' ? '<div>Fechamento: ' + esc(soHora(c.tchau)) + '</div>' : '<div><b>CONFERÊNCIA - conta em aberto</b></div>';
+            var fech = tipo === 'FINAL' ? '<div>Fechamento: ' + esc(soHora(c.tchau)) + '</div>' + (c.forma ? '<div>Pagamento: <b>' + esc(c.forma) + '</b></div>' : '') : '<div><b>CONFERÊNCIA - conta em aberto</b></div>';
             return '<!doctype html><html><head><meta charset="utf-8"><title>Comanda</title><style>' +
                 '@page{size:' + (larg === '48mm' ? '58mm' : '80mm') + ' auto;margin:0}' +
                 'body{margin:0;padding:2mm;width:' + larg + ';font-family:"Courier New",monospace;font-size:12px;color:#000}' +
@@ -770,9 +828,7 @@
         function imprimirAberta(id) {
             var m = acharMesa(id);
             if (!m || m.itens.length === 0) { alert('Nenhum item lançado para imprimir.'); return; }
-            var c = { mesa: String(m.pessoa ? m.id : (m.idExibicao || m.id)), tchau: agoraBR(), abertura: m.abertaEm || '', itens: [], total: 0 };
-            m.itens.forEach(function(it) { c.itens.push({ produto: it.produto, qnt: it.qnt, preco: it.preco, obs: it.obs || '', pedidoEm: '' }); c.total += it.qnt * it.preco; });
-            imprimirHtml(htmlRecibo(c, 'CONFERENCIA'));
+            imprimirHtml(htmlRecibo(reciboDaMesa(m, ''), 'CONFERENCIA'));
         }
         function acharFinalizada(k) { return estado.finalizadas.find(function(f) { return f.k === k; }); }
         function imprimirFinalizada(k) {
@@ -962,7 +1018,8 @@
                             '<div style="display:flex; justify-content:space-between;"><strong>' + esc(nomeMesa(ma)) + '</strong>' + (ma.vip ? '<span style="font-size:0.875rem; font-weight:normal;">' + brl(totalMesaObj(ma)) + '</span>' : '<strong>' + brl(totalMesaObj(ma)) + '</strong>') + '</div>' +
                             (ma.abertaEm ? '<small>Aberta em ' + esc(ma.abertaEm) + '</small>' : '') +
                             '<div style="display:flex; flex-direction:column; gap:0.25rem;">' + linhasAb + '</div>' +
-                            '<div style="display:flex; gap:0.5rem;"><button data-id="' + esc(ma.id) + '" onclick="abrirNaCaixa(this.getAttribute(\'data-id\'))" style="background:#fff; border:2px solid #000; flex:1;">Abrir na caixa</button>' +
+                            '<div style="display:flex; gap:0.4rem; flex-wrap:wrap;"><button data-id="' + esc(ma.id) + '" onclick="abrirNaCaixa(this.getAttribute(\'data-id\'))" style="background:#fff; border:2px solid #000; flex:1;">➕ Incluir produtos</button>' +
+                            '<button data-id="' + esc(ma.id) + '" onclick="fecharMesa(this.getAttribute(\'data-id\'))" style="background:#f87171; border:2px solid #000; flex:1;">' + (ma.vip ? '📥 Guardar conta' : '💳 Fechar comanda') + '</button>' +
                             '<button data-id="' + esc(ma.id) + '" onclick="imprimirAberta(this.getAttribute(\'data-id\'))" title="Imprimir na térmica" style="background:#fff; border:2px solid #000;">🖨️</button></div>' +
                         '</div>';
                         if (ma.vip) vipAbHtml += cartaoAb; else abHtml += cartaoAb;
@@ -977,15 +1034,16 @@
                         (vipAbHtml ? '<h2 style="color:#000; margin: 1.5rem 0 0.5rem;">⭐ VIP em aberto: ' + vipLista.length + '</h2><p style="color:#000; font-size:0.875rem; font-weight:normal; margin-bottom:0.25rem;">Total: ' + brl(totalVipAb) + '</p><p style="color:#000; font-size:0.8rem; margin-bottom:0.75rem;">Contas mensais: não entram no "Encerrar todas" nem no fechamento do dia.</p><div class="mesas-grid">' + vipAbHtml + '</div>' : '') +
                     '</div>';
                 } else if (estado.abaAtiva === 'finalizadas') {
-                    var finHtml = '', totalFin = 0;
+                    var finHtml = '', totalFin = 0, porForma = {};
                     estado.finalizadas.forEach(function(f) {
                         totalFin += f.total;
+                        var nf = f.forma || 'Sem forma'; porForma[nf] = (porForma[nf] || 0) + f.total;
                         var linhasF = f.itens.map(function(it) {
                             return '<div style="display:flex; justify-content:space-between; gap:0.5rem; font-size:0.85rem;"><span>' + it.qnt + 'x ' + esc(it.produto) + (it.obs ? ' <small>(📝 ' + esc(it.obs) + ')</small>' : '') + (soHora(it.pedidoEm) ? ' <small>às ' + esc(soHora(it.pedidoEm)) + '</small>' : '') + '</span><span>' + brl(it.qnt * it.preco) + '</span></div>';
                         }).join('');
                         finHtml += '<div class="mesa-card" style="height:auto; gap:0.5rem; cursor:default;">' +
                             '<div style="display:flex; justify-content:space-between;"><strong>' + esc(rotuloChave(f.mesa)) + '</strong><strong>' + brl(f.total) + '</strong></div>' +
-                            '<small>Aberta: ' + esc(f.abertura) + '<br>Fechada: ' + esc(f.tchau) + '</small>' +
+                            '<small>Aberta: ' + esc(f.abertura) + '<br>Fechada: ' + esc(f.tchau) + (f.forma ? '<br>💳 Pagamento: <b>' + esc(f.forma) + '</b>' : '') + '</small>' +
                             '<div style="display:flex; flex-direction:column; gap:0.25rem;">' + linhasF + '</div>' +
                             '<div style="display:flex; gap:0.5rem;"><button data-k="' + esc(f.k) + '" onclick="imprimirFinalizada(this.getAttribute(\'data-k\'))" style="background:#fff; border:2px solid #000; flex:1;">🖨️ Imprimir</button>' +
                             '<button data-k="' + esc(f.k) + '" onclick="pdfFinalizada(this.getAttribute(\'data-k\'))" style="background:#fff; border:2px solid #000; flex:1;">📄 PDF (Drive)</button></div>' +
@@ -994,7 +1052,8 @@
                     var papel = lerConfig('papel', '80');
                     main.innerHTML = '<div>' +
                         '<div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.75rem; margin-bottom:1rem;">' +
-                            '<h2 style="color:#000;">✅ Comandas finalizadas: ' + estado.finalizadas.length + ' | ' + brl(totalFin) + '</h2>' +
+                            '<div><h2 style="color:#000;">✅ Comandas finalizadas: ' + estado.finalizadas.length + ' | ' + brl(totalFin) + '</h2>' +
+                            '<div style="color:#000; font-size:0.85rem;">' + Object.keys(porForma).map(function(k) { return esc(k) + ': <b>' + brl(porForma[k]) + '</b>'; }).join(' &nbsp;|&nbsp; ') + '</div></div>' +
                             '<div style="display:flex; gap:0.75rem; align-items:center; flex-wrap:wrap; color:#000; font-size:0.85rem;">' +
                                 '<label>Papel: <select onchange="mudarPapel(this.value)" style="width:auto;"><option value="80"' + (papel === '80' ? ' selected' : '') + '>80 mm</option><option value="58"' + (papel === '58' ? ' selected' : '') + '>58 mm</option></select></label>' +
                                 '<label><input type="checkbox" onchange="mudarAutoImp(this)"' + (lerConfig('autoimp', '0') === '1' ? ' checked' : '') + ' style="width:auto;"> Imprimir ao fechar a conta</label>' +
