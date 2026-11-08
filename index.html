@@ -173,6 +173,7 @@
             pessoasNovas: [],
             finalizadas: [],
             frequentes: [],
+            clientes: [],
             usuario: null,
             fechamento: null
         };
@@ -390,6 +391,7 @@
                             CARDAPIO = data.produtos;
                         }
                         if (data.frequentes) estado.frequentes = data.frequentes;
+                        if (data.clientes) estado.clientes = data.clientes;
                         if (data.usuario) { estado.usuario = data.usuario; atualizarUsuario(); }
                         if (data.pedidos) {
                             estado.pedidosGlobais = data.pedidos;
@@ -456,19 +458,39 @@
             renderizar();
         }
 
+        // Clientes recorrentes (lista da aba "Clientes" da planilha): sugestões ao digitar o começo do nome
+        function semAcento(t) { return String(t).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim(); }
+        function filtrarClientes(txt) {
+            var q = semAcento(txt), ini = [], meio = [];
+            estado.clientes.forEach(function(c) {
+                var n = semAcento(c.nome);
+                if (!q) ini.push(c);
+                else if (n.indexOf(q) === 0) ini.push(c);
+                else if (n.indexOf(q) > 0) meio.push(c);
+            });
+            return ini.concat(meio).slice(0, q ? 8 : 12);
+        }
+        function htmlSugestoes(txt) {
+            var lista = filtrarClientes(txt);
+            if (!lista.length) return txt ? '<div style="font-size:0.8rem; color:#555;">Nenhum cliente com esse nome. Digite o nome completo e toque em Adicionar.</div>' : '';
+            return (txt ? '' : '<div style="font-size:0.8rem; margin-bottom:0.25rem;">Clientes frequentes:</div>') + lista.map(function(c) {
+                return '<button type="button" data-nome="' + esc(c.nome) + '" onclick="escolherPessoa(this.getAttribute(\'data-nome\'))" style="background:#fef08a; border:2px solid #000; margin:0.2rem; padding:0.35rem 0.7rem; border-radius:999px;">' + esc(c.nome) + (c.n ? ' <small>(' + c.n + 'x)</small>' : '') + '</button>';
+            }).join('');
+        }
+        function sugerirPessoas(txt) {
+            var box = document.getElementById('sugestoes-pessoa');
+            if (box) box.innerHTML = htmlSugestoes(txt);
+        }
         function novaPessoa() {
             fecharJanelaPessoa();
-            var chips = estado.frequentes.map(function(f) {
-                return '<button type="button" data-nome="' + esc(f.nome) + '" onclick="escolherPessoa(this.getAttribute(\'data-nome\'))" style="background:#fef08a; border:2px solid #000; margin:0.2rem; padding:0.35rem 0.7rem; border-radius:999px;">' + esc(f.nome) + ' <small>(' + f.n + 'x)</small></button>';
-            }).join('');
             var el = document.createElement('div');
             el.id = 'janela-pessoa';
             el.style.cssText = 'position:fixed; inset:0; background:rgba(0,0,0,0.5); display:flex; align-items:center; justify-content:center; z-index:50; padding:1rem;';
             el.innerHTML = '<div style="background:#fff; border:3px solid #000; border-radius:0.75rem; padding:1rem; width:100%; max-width:26rem; color:#000;">' +
                 '<h3 style="margin-bottom:0.75rem;">+ Nova Pessoa</h3>' +
-                (chips ? '<div style="font-size:0.8rem; margin-bottom:0.25rem;">Clientes frequentes:</div><div style="margin-bottom:0.75rem;">' + chips + '</div>' : '') +
-                '<label style="font-size:0.8rem;">' + (chips ? 'Ou digite outro nome (VIP = mensalista):' : 'Nome da pessoa (VIP = mensalista):') + '</label>' +
-                '<input type="text" id="input-nova-pessoa" maxlength="40" style="width:100%; margin:0.25rem 0 0.75rem;" onkeydown="if(event.key===\'Enter\') escolherPessoa(this.value)">' +
+                '<label style="font-size:0.8rem;">Nome (comece a digitar para ver os clientes salvos; VIP = mensalista):</label>' +
+                '<input type="text" id="input-nova-pessoa" maxlength="40" autocomplete="off" style="width:100%; margin:0.25rem 0 0.5rem;" oninput="sugerirPessoas(this.value)" onkeydown="if(event.key===\'Enter\') escolherPessoa(this.value)">' +
+                '<div id="sugestoes-pessoa" style="margin-bottom:0.75rem; max-height:40vh; overflow:auto;">' + htmlSugestoes('') + '</div>' +
                 '<div style="display:flex; gap:0.5rem; justify-content:flex-end;">' +
                     '<button type="button" onclick="fecharJanelaPessoa()" style="background:#fff; border:2px solid #000;">Cancelar</button>' +
                     '<button type="button" onclick="escolherPessoa(document.getElementById(\'input-nova-pessoa\').value)" style="background:#facc15; border:2px solid #000;">Adicionar</button>' +
