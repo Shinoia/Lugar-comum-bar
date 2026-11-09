@@ -186,14 +186,16 @@
         var CORES_STATUS = { pendente: '#f472b6', preparando: '#f97316', pronto: '#4ade80', entregue: '#facc15' };
         function corStatus(st) { return CORES_STATUS[st] || '#fff'; }
 
-        // chave estável de um pedido na lista (mesa + produto + horário + ocorrência)
+        // chave estável de um item aberto: mesa + produto + ordem entre os itens abertos iguais.
+        // Não usa o horário: um pedido recém-lançado (ainda sem horário) e o mesmo pedido depois de gravado na planilha têm a mesma chave.
         function chavePedido(lista, idx) {
             var q0 = lista[idx];
-            var base = String(q0.mesa) + '|' + q0.produto + '|' + String(q0.oi || '');
+            if (q0.status === 'fechado') return 'fechado|' + idx;
+            var base = String(q0.mesa) + '|' + q0.produto;
             var n = 0;
             for (var i = 0; i < idx; i++) {
                 var q = lista[i];
-                if (String(q.mesa) + '|' + q.produto + '|' + String(q.oi || '') === base) n++;
+                if (q.status !== 'fechado' && String(q.mesa) + '|' + q.produto === base) n++;
             }
             return base + '|' + n;
         }
