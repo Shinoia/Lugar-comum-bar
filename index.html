@@ -145,7 +145,7 @@
         function atualizarUsuario() {
             var el = document.getElementById('info-usuario');
             if (!el) return;
-            el.textContent = estado.usuario ? ('👤 ' + estado.usuario.nome + (estado.usuario.admin ? ' (admin)' : '')) : '';
+            el.textContent = estado.usuario ? ('👤 ' + estado.usuario.nome + (estado.usuario.admin ? ' (admin)' : '') + ' · script ' + (estado.versao || '?')) : '';
         }
         function exigirAdmin() {
             if (estado.usuario && !estado.usuario.admin) { alert('Somente administradores podem fazer isso.'); return false; }
@@ -392,7 +392,7 @@
                         }
                         if (data.frequentes) estado.frequentes = data.frequentes;
                         if (data.clientes) estado.clientes = data.clientes;
-                        if (data.usuario) { estado.usuario = data.usuario; atualizarUsuario(); }
+                        if (data.usuario) { estado.usuario = data.usuario; estado.versao = data.versao || 'antiga'; atualizarUsuario(); }
                         if (data.pedidos) {
                             estado.pedidosGlobais = data.pedidos;
                             // pedidos enviados que o servidor ainda não gravou continuam na tela
