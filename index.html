@@ -42,6 +42,8 @@
 
         .badge { padding: 0.125rem 0.5rem; border-radius: 0.25rem; font-size: 0.75rem; font-weight: bold; background: #fff; color: #000; }
         .btn-acao-entregue { background: #fff; border: 2px solid #000; border-radius: 0.4rem; padding: 0.3rem 0.5rem; font-size: 0.75rem; font-weight: bold; color: #000; text-align: center; }
+        .sync-status.off { background: #ff0000 !important; color: #fff !important; border-color: #fff; animation: piscaOff 1s infinite; }
+        @keyframes piscaOff { 50% { opacity: 0.55; } }
         .sync-status { font-size: 0.75rem; font-weight: bold; background: #4ade80; padding: 0.25rem 0.5rem; border-radius: 0.25rem; border: 1px solid #000; color: #000; }
     </style>
 </head>
@@ -49,7 +51,7 @@
     <header>
         <div>
             <h1>🍺 Lugar Comum Bar</h1>
-            <span id="sync-indicator" class="sync-status">Sistema Ativo</span>
+            <span id="sync-indicator" class="sync-status">Conectado</span>
         </div>
         <div class="nav-buttons">
             <button id="btn-aba-caixa" class="btn-tab active-caixa" onclick="mudarAba('caixa')">🧮 Caixa / Mesas</button>
@@ -383,6 +385,12 @@
             } catch (err) {}
         }
 
+        function marcarConexao(ok) {
+            var el = document.getElementById('sync-indicator');
+            if (!el) return;
+            el.textContent = ok ? 'Conectado' : 'Desconectado';
+            if (ok) el.classList.remove('off'); else el.classList.add('off');
+        }
         function sincronizar() {
             capturarValoresFormulario();
             var meuSeq = (estado.seqReq = (estado.seqReq || 0) + 1);
@@ -392,6 +400,7 @@
                     // resposta mais antiga que outra já aplicada (chegou fora de ordem): descarta, senão o status "volta"
                     if (meuSeq < (estado.seqAplicada || 0)) return;
                     estado.seqAplicada = meuSeq;
+                    marcarConexao(!!data);
                     if (data) {
                         if (data.produtos && data.produtos.length > 0) {
                             CARDAPIO = data.produtos;
@@ -430,7 +439,7 @@
                     }
                 })
                 .catch(function(e) { 
-                    console.log("Aviso de rede (usando dados locais):", e); 
+                    console.log("Aviso de rede (usando dados locais):", e); marcarConexao(false);
                     renderizar(); 
                 });
         }
