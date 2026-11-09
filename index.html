@@ -51,7 +51,6 @@
     <header>
         <div>
             <h1>🍺 Lugar Comum Bar</h1>
-            <span id="sync-indicator" class="sync-status">Conectado</span>
         </div>
         <div class="nav-buttons">
             <button id="btn-aba-caixa" class="btn-tab active-caixa" onclick="mudarAba('caixa')">🧮 Caixa / Mesas</button>
@@ -64,6 +63,7 @@
             <button class="btn-tab" onclick="sair()" title="Sair deste aparelho">Sair</button>
         </div>
     </header>
+    <div style="display:flex; justify-content:flex-end; padding:0.35rem 1rem 0;"><span id="sync-indicator" class="sync-status">Conectado</span></div>
 
     <main id="app-conteudo"></main>
 
