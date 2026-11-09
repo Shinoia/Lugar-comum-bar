@@ -385,9 +385,13 @@
 
         function sincronizar() {
             capturarValoresFormulario();
+            var meuSeq = (estado.seqReq = (estado.seqReq || 0) + 1);
             fetch(API_URL)
                 .then(function(res) { return res.json(); })
                 .then(function(data) {
+                    // resposta mais antiga que outra já aplicada (chegou fora de ordem): descarta, senão o status "volta"
+                    if (meuSeq < (estado.seqAplicada || 0)) return;
+                    estado.seqAplicada = meuSeq;
                     if (data) {
                         if (data.produtos && data.produtos.length > 0) {
                             CARDAPIO = data.produtos;
@@ -410,12 +414,14 @@
                                 var ov = estado.overrides[chv];
                                 if (!ov) continue;
                                 var pk = data.pedidos[kk];
-                                if (pk.statusPreparo === ov.status || Date.now() - ov.t > 600000) {
+                                if (pk.statusPreparo === ov.status) { if (!ov.ok) ov.ok = Date.now(); }
+                                // depois de confirmado, a mudança continua valendo por 25 s (protege contra respostas atrasadas)
+                                if ((ov.ok && Date.now() - ov.ok > 25000) || Date.now() - ov.t > 600000) {
                                     delete estado.overrides[chv];
                                 } else {
                                     pk.statusPreparo = ov.status;
                                     if (pk.linha) ov.linha = pk.linha;
-                                    if (!ov.enviando && Date.now() - ov.ult > 6000) enviarStatus(chv);
+                                    if (!ov.ok && !ov.enviando && Date.now() - ov.ult > 6000) enviarStatus(chv);
                                 }
                             }
                             processarPedidos();
