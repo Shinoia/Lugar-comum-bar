@@ -3,6 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Lugar Comum">
+    <meta name="theme-color" content="#b91c1c">
+    <link rel="apple-touch-icon" href="apple-touch-icon.png">
     <title>Lugar Comum Bar</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: system-ui, sans-serif; }
@@ -46,6 +52,11 @@
         .sync-status.off { background: #ff0000 !important; color: #fff !important; border-color: #fff; animation: piscaOff 1s infinite; }
         @keyframes piscaOff { 50% { opacity: 0.55; } }
         .sync-status { font-size: 0.75rem; font-weight: bold; background: #4ade80; padding: 0.25rem 0.5rem; border-radius: 0.25rem; border: 1px solid #000; color: #000; }
+            /* Safari antigo (iPad com iOS 12) não conhece "gap" em flexbox: espaçamento reserva */
+        .sem-gap header > *, .sem-gap .nav-buttons > *, .sem-gap [style*="display:flex"] > *, .sem-gap [style*="display: flex"] > * { margin-right: 0.4rem; margin-bottom: 0.3rem; }
+        .sem-gap .form-grupo > *, .sem-gap .lista-itens > *, .sem-gap .kds-card > *, .sem-gap [style*="flex-direction:column"] > * { margin-right: 0; margin-bottom: 0.4rem; }
+        html { -webkit-text-size-adjust: 100%; }
+        body { padding-top: env(safe-area-inset-top); }
     </style>
 </head>
 <body>
@@ -69,6 +80,17 @@
     <main id="app-conteudo"></main>
 
     <script>
+        (function() {
+            try {
+                var a = document.createElement('div'); a.style.cssText = 'display:flex;flex-direction:column;row-gap:1px;position:absolute;visibility:hidden';
+                a.appendChild(document.createElement('i')); a.appendChild(document.createElement('i'));
+                a.firstChild.style.height = a.lastChild.style.height = '1px';
+                document.body.appendChild(a);
+                var ok = a.offsetHeight === 3;
+                document.body.removeChild(a);
+                if (!ok) document.documentElement.className += ' sem-gap';
+            } catch (e) {}
+        })();
         var API_URL = "https://script.google.com/macros/s/AKfycbyawZahFXeytjgTj2-yId6TIQwF7RoSqF2alHUj4AF46Huhmsl4keW4bUm6sakf8p_M/exec";
 
         // ---------- login da equipe (usuário + senha da aba "Key" da planilha) ----------
