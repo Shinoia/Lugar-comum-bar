@@ -1181,6 +1181,9 @@
                         }
                     }
 
+                    // mais novo primeiro: a posição do item na lista segue a ordem de chegada na planilha
+                    itensKDS.sort(function(a, b) { return b.idItem - a.idItem; });
+
                     var kdsHtml = '';
                     if (itensKDS.length === 0) {
                         kdsHtml = '<p style="grid-column: span 4; text-align: center; padding: 3rem; color:#000; font-weight:bold;">Nenhum item pendente no momento.</p>';
