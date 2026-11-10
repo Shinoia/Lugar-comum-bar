@@ -434,6 +434,7 @@
                         if (data.clientes) estado.clientes = data.clientes;
                         if (data.usuario) { estado.usuario = data.usuario; estado.versao = data.versao || 'antiga'; atualizarUsuario(); }
                         if (data.pedidos) {
+                            limparFechando(data.pedidos);
                             estado.pedidosGlobais = data.pedidos;
                             // pedidos enviados que o servidor ainda não gravou continuam na tela
                             estado.pendentes = estado.pendentes.filter(function(pd) {
@@ -442,6 +443,8 @@
                                 return n < pd.base + 1;
                             });
                             estado.pendentes.forEach(function(pd) { data.pedidos.push(pd.pedido); });
+                            data.pedidos = aplicarFechando(data.pedidos);
+                            estado.pedidosGlobais = data.pedidos;
                             // mudanças de status feitas aqui: ficam na tela até a planilha confirmar (e são reenviadas)
                             for (var kk = 0; kk < data.pedidos.length; kk++) {
                                 var chv = chavePedido(data.pedidos, kk);
@@ -799,6 +802,26 @@
             imprimirHtml(htmlRecibo(reciboDaMesa(m, f.forma), f.forma ? 'FINAL' : 'CONFERENCIA'));
         }
         // Passo 2: confirma (exige a forma de pagamento) e fecha
+        // Comandas que o usuário acabou de fechar: somem da tela na hora, enquanto a planilha (e o PDF) terminam.
+        // Só escondem os itens que já existiam no momento do fechamento; pedido novo na mesma mesa aparece normal.
+        function sigItem(p) { return String(p.mesa) + '|' + String(p.produto) + '|' + String(p.pedidoEm || ''); }
+        function aplicarFechando(lista) {
+            var f = estado.fechando || {}, ks = Object.keys(f);
+            if (!ks.length) return lista;
+            return lista.filter(function(p) {
+                if (p.status === 'fechado') return true;
+                for (var i = 0; i < ks.length; i++) { if (f[ks[i]].sigs[sigItem(p)]) return false; }
+                return true;
+            });
+        }
+        function limparFechando(brutos) {
+            var f = estado.fechando || {};
+            Object.keys(f).forEach(function(k) {
+                var e = f[k];
+                var restam = brutos.some(function(p) { return p.status !== 'fechado' && e.sigs[sigItem(p)]; });
+                if (!restam || Date.now() - e.t > 180000) delete f[k];
+            });
+        }
         function confirmarFechamento() {
             var f = estado.fechamento, mesaObj = f && acharMesa(f.id);
             if (!mesaObj) { fecharJanelaFechamento(); return; }
@@ -816,12 +839,27 @@
                 imprimirHtml(htmlRecibo(reciboDaMesa(mesaObj, forma), 'FINAL'));
             }
 
-            var aposFechar = function() {
-                setTimeout(function() {
-                    estado.mesaSelecionadaId = null;
-                    sincronizar();
-                }, 800);
+            // some da tela imediatamente
+            var sigs = {}, qtdSigs = 0;
+            estado.pedidosGlobais.forEach(function(p) {
+                if (p.status !== 'fechado' && String(p.mesa) === String(idAlvo)) { sigs[sigItem(p)] = true; qtdSigs++; }
+            });
+            var regFech = null;
+            if (qtdSigs > 0) {
+                regFech = { sigs: sigs, t: Date.now() };
+                if (!estado.fechando) estado.fechando = {};
+                estado.fechando[idAlvo + '#' + Date.now()] = regFech;
+                estado.pedidosGlobais = aplicarFechando(estado.pedidosGlobais);
+            }
+            estado.mesaSelecionadaId = null;
+            processarPedidos();
+            renderizar();
+            var desfazerFechar = function() {
+                if (regFech && estado.fechando) Object.keys(estado.fechando).forEach(function(k) { if (estado.fechando[k] === regFech) delete estado.fechando[k]; });
+                alert('Não foi possível fechar a comanda (sem conexão com a planilha). Confira e tente de novo.');
+                sincronizar();
             };
+            var aposFechar = function() { sincronizar(); };
             // GET primeiro (o servidor novo também gera o PDF no Drive); se o script for antigo, usa o POST de antes
             fetch(API_URL + '?acao=fechar_mesa&mesa=' + encodeURIComponent(idAlvo) + '&forma=' + encodeURIComponent(forma))
                 .then(function(res) { return res.json(); })
@@ -829,7 +867,7 @@
                     if (r && r.result === 'success') { aposFechar(); return; }
                     return fecharMesaPost(idAlvo).then(aposFechar);
                 })
-                .catch(function() { fecharMesaPost(idAlvo).then(aposFechar); });
+                .catch(function() { fecharMesaPost(idAlvo).then(aposFechar).catch(desfazerFechar); });
         }
         function fecharMesaPost(idAlvo) {
             return fetch(API_URL, {
