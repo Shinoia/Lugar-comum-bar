@@ -91,6 +91,7 @@
                 if (!ok) document.documentElement.className += ' sem-gap';
             } catch (e) {}
         })();
+        var ESTACAO = /[?&]estacao=1/.test(location.search); // notebook do bar: imprime sozinho o que os iPads enviam
         var API_URL = "https://script.google.com/macros/s/AKfycbyawZahFXeytjgTj2-yId6TIQwF7RoSqF2alHUj4AF46Huhmsl4keW4bUm6sakf8p_M/exec";
 
         // ---------- login da equipe (usuário + senha da aba "Key" da planilha) ----------
@@ -417,6 +418,7 @@
             if (ok) el.classList.remove('off'); else el.classList.add('off');
         }
         function sincronizar() {
+            if (ESTACAO) return;
             capturarValoresFormulario();
             var meuSeq = (estado.seqReq = (estado.seqReq || 0) + 1);
             fetch(API_URL)
@@ -919,7 +921,26 @@
                 linhas + '<hr><div class="r t"><span>TOTAL</span><span>' + brl(c.total) + '</span></div><hr>' +
                 '<div class="c">Obrigado e volte sempre!</div><div style="height:8mm"></div></body></html>';
         }
-        function imprimirHtml(html) {
+        // Destino da impressão (por aparelho): "local" = imprime aqui; "fila" = manda para a impressora do bar (notebook)
+        function imprimirHtml(html, titulo) {
+            if (!ESTACAO && lerConfig('destino', 'local') === 'fila') { enviarParaFila(html, titulo); return; }
+            imprimirLocal(html);
+        }
+        function avisoRapido(txt, erro) {
+            var d = document.createElement('div');
+            d.textContent = txt;
+            d.style.cssText = 'position:fixed;left:50%;bottom:1.5rem;margin-left:-45%;width:90%;text-align:center;z-index:99999;padding:0.75rem;border-radius:0.5rem;font-weight:bold;border:2px solid #000;background:' + (erro ? '#ff0000;color:#fff' : '#22c55e;color:#000');
+            document.body.appendChild(d);
+            setTimeout(function() { if (d.parentNode) d.parentNode.removeChild(d); }, 2500);
+        }
+        function enviarParaFila(html, titulo) {
+            fetch(API_URL, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'text/plain' },
+                body: JSON.stringify({ acao: 'fila_add', titulo: titulo || '', html: html }) })
+                .then(function() { avisoRapido('🖨️ Enviado para a impressora do bar'); })
+                .catch(function() { avisoRapido('Não foi possível enviar para a impressora (sem conexão).', true); });
+        }
+        function mudarDestino(v) { gravarConfig('destino', v); }
+        function imprimirLocal(html) {
             var f = document.createElement('iframe');
             f.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0';
             document.body.appendChild(f);
@@ -934,7 +955,7 @@
         function imprimirAberta(id) {
             var m = acharMesa(id);
             if (!m || m.itens.length === 0) { alert('Nenhum item lançado para imprimir.'); return; }
-            imprimirHtml(htmlRecibo(reciboDaMesa(m, ''), 'CONFERENCIA'));
+            imprimirHtml(htmlRecibo(reciboDaMesa(m, ''), 'CONFERENCIA'), 'Conferência');
         }
         function acharFinalizada(k) { return estado.finalizadas.find(function(f) { return f.k === k; }); }
         function imprimirFinalizada(k) {
@@ -1186,6 +1207,7 @@
                             '<div style="color:#000; font-size:0.85rem;">' + Object.keys(porForma).map(function(k) { return esc(k) + ': <b>' + brl(porForma[k]) + '</b>'; }).join(' &nbsp;|&nbsp; ') + (totalVipFin > 0 ? '<br>⭐ VIP (mensal, fora do caixa): <b>' + brl(totalVipFin) + '</b>' : '') + '</div></div>' +
                             '<div style="display:flex; gap:0.75rem; align-items:center; flex-wrap:wrap; color:#000; font-size:0.85rem;">' +
                                 '<label>Papel: <select onchange="mudarPapel(this.value)" style="width:auto;"><option value="80"' + (papel === '80' ? ' selected' : '') + '>80 mm</option><option value="58"' + (papel === '58' ? ' selected' : '') + '>58 mm</option></select></label>' +
+                                '<label>Imprimir em: <select onchange="mudarDestino(this.value)" style="width:auto;"><option value="local"' + (lerConfig('destino', 'local') === 'local' ? ' selected' : '') + '>Este aparelho</option><option value="fila"' + (lerConfig('destino', 'local') === 'fila' ? ' selected' : '') + '>Impressora do bar</option></select></label>' +
                                 '<label><input type="checkbox" onchange="mudarAutoImp(this)"' + (lerConfig('autoimp', '0') === '1' ? ' checked' : '') + ' style="width:auto;"> Imprimir ao fechar a conta</label>' +
                             '</div>' +
                         '</div>' +
@@ -1259,11 +1281,59 @@
             }
         }
 
+
+        // ---------- estação de impressão (abrir com ?estacao=1 no notebook que tem a impressora) ----------
+        function iniciarEstacao() {
+            var impressas = 0, ocupado = false, fila = [], rodando = false;
+            document.querySelector('main').innerHTML = '<div style="text-align:center; color:#fff; padding:2rem;"><h1>🖨️ Estação de impressão</h1>' +
+                '<p style="font-size:1.1rem;">Deixe esta tela aberta. Os pedidos de impressão dos iPads saem aqui sozinhos.</p>' +
+                '<div id="est-status" style="font-size:1.5rem; font-weight:bold; margin:1.5rem 0;">Aguardando...</div>' +
+                '<div id="est-ultima" style="font-size:0.95rem;"></div></div>';
+            function z(n) { return (n < 10 ? '0' : '') + n; }
+            function marcar(txt, ok) {
+                var el = document.getElementById('est-status');
+                if (el) { el.textContent = txt; el.style.color = ok ? '#bbf7d0' : '#fecaca'; }
+            }
+            function proximo() {
+                if (rodando || !fila.length) return;
+                rodando = true;
+                var j = fila.shift();
+                imprimirLocal(j.html);
+                impressas++;
+                var d = new Date();
+                var u = document.getElementById('est-ultima');
+                if (u) u.textContent = 'Última impressão: ' + (j.titulo || 'comanda') + ' às ' + z(d.getHours()) + ':' + z(d.getMinutes()) + ' (total hoje: ' + impressas + ')';
+                setTimeout(function() { rodando = false; proximo(); }, 2500);
+            }
+            function buscar() {
+                if (ocupado) return;
+                ocupado = true;
+                fetch(API_URL + '?acao=fila_pegar')
+                    .then(function(res) { return res.json(); })
+                    .then(function(r) {
+                        ocupado = false;
+                        if (r && r.result === 'success') {
+                            marcar('✅ Conectado — aguardando pedidos', true);
+                            (r.jobs || []).forEach(function(j) { fila.push(j); });
+                            proximo();
+                        } else { marcar('⚠️ Erro: ' + ((r && r.error) || 'resposta inválida'), false); }
+                    })
+                    .catch(function() { ocupado = false; marcar('⚠️ Sem conexão ou sem login', false); });
+            }
+            buscar();
+            setInterval(buscar, 3000);
+        }
+
         // Executa imediatamente e sincroniza em segundo plano
-        renderizar();
-        if (!CHAVE) pedirChave('');
-        sincronizar();
-        setInterval(sincronizar, 5000);
+        if (ESTACAO) {
+            if (!CHAVE) pedirChave('');
+            iniciarEstacao();
+        } else {
+            renderizar();
+            if (!CHAVE) pedirChave('');
+            sincronizar();
+            setInterval(sincronizar, 5000);
+        }
     </script>
 </body>
 </html>
