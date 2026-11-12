@@ -417,6 +417,16 @@
             el.textContent = ok ? 'Conectado' : 'Desconectado';
             if (ok) el.classList.remove('off'); else el.classList.add('off');
         }
+        // A atualização automática (a cada 5 s) não redesenha a tela enquanto alguém está escolhendo produto,
+        // digitando quantidade ou observação: redesenhar fecharia a lista aberta e tiraria o cursor do campo.
+        function formEmUso() {
+            var ae = document.activeElement;
+            return !!(ae && (ae.id === 'select-produto' || ae.id === 'input-qtd' || ae.id === 'input-obs'));
+        }
+        function renderizarSeLivre() {
+            if (formEmUso()) { estado.renderAdiado = Date.now(); return; }
+            renderizar();
+        }
         function sincronizar() {
             if (ESTACAO) return;
             capturarValoresFormulario();
@@ -465,12 +475,12 @@
                             }
                             processarPedidos();
                         }
-                        renderizar();
+                        renderizarSeLivre();
                     }
                 })
                 .catch(function(e) { 
                     console.log("Aviso de rede (usando dados locais):", e); marcarConexao(false);
-                    renderizar(); 
+                    renderizarSeLivre(); 
                 });
         }
 
@@ -900,7 +910,7 @@
 
         // tipo: 'FINAL' (comanda fechada) ou 'CONFERENCIA' (parcial, ainda aberta)
         function htmlRecibo(c, tipo) {
-            var larg = lerConfig('papel', '80') === '58' ? '48mm' : '72mm';
+            var larg = lerConfig('papel', '80') === '58' ? '42mm' : '62mm';
             var linhas = '';
             c.itens.forEach(function(it) {
                 linhas += '<div class="r"><span>' + it.qnt + 'x ' + esc(it.produto) + '</span><span>' + brl(it.qnt * it.preco) + '</span></div>';
@@ -911,7 +921,7 @@
             var dataDia = (String(c.tchau || agoraBR()).match(/\d{2}\/\d{2}\/\d{4}/) || [''])[0];
             var fech = tipo === 'FINAL' ? '<div>Fechamento: ' + esc(soHora(c.tchau)) + '</div>' + (c.forma ? '<div>Pagamento: <b>' + esc(c.forma) + '</b></div>' : '') : '<div><b>CONFERÊNCIA - conta em aberto</b></div>';
             return '<!doctype html><html><head><meta charset="utf-8"><title>Comanda</title><style>' +
-                '@page{size:' + (larg === '48mm' ? '58mm' : '80mm') + ' auto;margin:0}' +
+                '@page{size:' + (larg === '42mm' ? '58mm' : '80mm') + ' auto;margin:0}' +
                 'body{margin:0;padding:2mm;width:' + larg + ';font-family:"Courier New",monospace;font-size:12px;color:#000}' +
                 '.c{text-align:center}.r{display:flex;justify-content:space-between;gap:4px}.s{font-size:10px;padding-left:8px}' +
                 'hr{border:0;border-top:1px dashed #000;margin:4px 0}.t{font-size:15px;font-weight:bold}</style></head><body>' +
@@ -981,7 +991,7 @@
 
         function usuarioAtualNome() { return USUARIO || ''; }
         function htmlResumoDia(r, fin) {
-            var larg = lerConfig('papel', '80') === '58' ? '48mm' : '72mm';
+            var larg = lerConfig('papel', '80') === '58' ? '42mm' : '62mm';
             var d = r.detalhe || { comandas: [], vip: [], porForma: {}, bar: { qtd: 0, valor: 0, itens: {} }, cozinha: { qtd: 0, valor: 0, itens: {} }, aberto: [] };
             function lin(a, b, cls) { return '<div class="r' + (cls ? ' ' + cls : '') + '"><span>' + a + '</span><span>' + b + '</span></div>'; }
             function secao(t) { return '<hr><div class="c"><b>' + esc(t) + '</b></div><hr>'; }
@@ -1021,7 +1031,7 @@
                     (nomes.map(function(n) { return lin(cat.itens[n].q + 'x ' + esc(n), brl(cat.itens[n].v)); }).join('') || '<div>—</div>') +
                     lin('Total ' + titulo + ' (' + cat.qtd + ' itens)', brl(cat.valor), 'b') + '<div style="height:3px"></div>';
             }
-            var larguraPag = larg === '48mm' ? '58mm' : '80mm';
+            var larguraPag = larg === '42mm' ? '58mm' : '80mm';
             return '<!doctype html><html><head><meta charset="utf-8"><title>Fechamento do dia</title><style>' +
                 '@page{size:' + larguraPag + ' auto;margin:0}' +
                 'body{margin:0;padding:2mm;width:' + larg + ';font-family:"Courier New",monospace;font-size:12px;color:#000}' +
