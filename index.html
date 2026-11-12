@@ -190,7 +190,7 @@
         var estado = {
             abaAtiva: 'caixa',
             mesaSelecionadaId: null,
-            produtoSelecionadoCache: 'Refrigerante',
+            produtoSelecionadoCache: '',
             quantidadeCache: 1,
             pedidosGlobais: [],
             pendentes: [],
@@ -404,7 +404,7 @@
             try {
                 var sel = document.getElementById('select-produto');
                 var qtd = document.getElementById('input-qtd');
-                if (sel && sel.value) estado.produtoSelecionadoCache = sel.value;
+                if (sel) estado.produtoSelecionadoCache = sel.value; // inclui "em branco"
                 if (qtd && qtd.value) estado.quantidadeCache = qtd.value;
                 var obsEl = document.getElementById('input-obs');
                 if (obsEl) estado.obsCache = obsEl.value;
@@ -479,6 +479,7 @@
             if (aba === 'caixa') {
                 estado.mesaSelecionadaId = null;
             }
+            estado.produtoSelecionadoCache = ''; // trocar de página também zera o produto
             
             var btnCaixa = document.getElementById('btn-aba-caixa');
             var btnCozinha = document.getElementById('btn-aba-cozinha');
@@ -498,9 +499,8 @@
         function selecionarMesa(id) {
             var alvoSel = acharMesa(id);
             estado.mesaSelecionadaId = alvoSel ? alvoSel.id : id;
-            if (CARDAPIO.length > 0 && !estado.produtoSelecionadoCache) {
-                estado.produtoSelecionadoCache = CARDAPIO[0].nome;
-            }
+            estado.produtoSelecionadoCache = ''; // ao abrir uma comanda, o produto começa em branco
+            estado.obsCache = '';
             estado.quantidadeCache = 1;
             renderizar();
         }
@@ -590,7 +590,7 @@
             
             var prod = CARDAPIO.find(function(p) { return p.nome == estado.produtoSelecionadoCache; });
             if (!prod || estoqueDisponivel(prod.nome) <= 0) {
-                alert('Selecione um produto disponível.');
+                alert('Selecione um produto na lista antes de lançar.');
                 return;
             }
 
@@ -618,14 +618,14 @@
             estado.pedidosGlobais.push(novo);
 
             // volta o formulário ao padrão: primeiro produto da lista e quantidade 1
-            estado.produtoSelecionadoCache = primeiroDisponivel();
+            estado.produtoSelecionadoCache = '';
             estado.quantidadeCache = 1;
             estado.obsCache = '';
             var obsForm = document.getElementById('input-obs');
             if (obsForm) obsForm.value = '';
             var selForm = document.getElementById('select-produto');
             var qtdForm = document.getElementById('input-qtd');
-            if (selForm) { selForm.selectedIndex = 0; if (estado.produtoSelecionadoCache) selForm.value = estado.produtoSelecionadoCache; }
+            if (selForm) { selForm.value = ''; selForm.selectedIndex = 0; }
             if (qtdForm) qtdForm.value = 1;
 
             processarPedidos();
@@ -979,6 +979,31 @@
                 .catch(function() { if (w) w.close(); alert('Falha de conexão ao gerar o PDF.'); });
         }
 
+        function usuarioAtualNome() { return USUARIO || ''; }
+        function htmlResumoDia(r, fin) {
+            var larg = lerConfig('papel', '80') === '58' ? '48mm' : '72mm';
+            var porF = {}, totVip = 0, n = 0;
+            fin.forEach(function(f) {
+                if (ehVip(f.mesa)) { totVip += f.total; }
+                else { n++; var nf = f.forma || 'Sem forma'; porF[nf] = (porF[nf] || 0) + f.total; }
+            });
+            function lin(a, b) { return '<div class="r"><span>' + a + '</span><span>' + b + '</span></div>'; }
+            var formas = Object.keys(porF).map(function(k) { return lin(esc(k), brl(porF[k])); }).join('');
+            return '<!doctype html><html><head><meta charset="utf-8"><title>Fechamento do dia</title><style>' +
+                '@page{size:' + (larg === '48mm' ? '58mm' : '80mm') + ' auto;margin:0}' +
+                'body{margin:0;padding:2mm;width:' + larg + ';font-family:"Courier New",monospace;font-size:12px;color:#000}' +
+                '.c{text-align:center}.r{display:flex;justify-content:space-between;gap:4px}' +
+                'hr{border:0;border-top:1px dashed #000;margin:4px 0}.t{font-size:15px;font-weight:bold}</style></head><body>' +
+                '<div class="c t">LUGAR COMUM BAR</div><div class="c"><b>FECHAMENTO DO DIA</b></div><hr>' +
+                '<div>' + esc(agoraBR()) + '</div>' + (usuarioAtualNome() ? '<div>Por: ' + esc(usuarioAtualNome()) + '</div>' : '') + '<hr>' +
+                lin('Comandas', String(n)) + '<hr>' +
+                '<div><b>Por forma de pagamento</b></div>' + (formas || '<div>—</div>') + '<hr>' +
+                lin('Bebidas', esc(r.bebidasTexto || '')) + lin('Comidas', esc(r.comidasTexto || '')) + '<hr>' +
+                '<div class="r t"><span>TOTAL</span><span>' + esc(r.totalTexto || '') + '</span></div>' +
+                (totVip > 0 ? '<div class="r"><span>VIP (fora do caixa)</span><span>' + brl(totVip) + '</span></div>' : '') +
+                '<hr><div>Em aberto: ' + esc(r.emAbertoTexto || 'R$ 0,00') + '</div><div>(' + esc(r.nomesAbertas || 'nenhuma') + ')</div>' +
+                '<div style="height:8mm"></div></body></html>';
+        }
         function finalizarDia() {
             if (!exigirAdmin()) return;
             var mesasOcupadas = todasMesas().filter(function(m) { return m.status === 'ocupada' && m.itens.length > 0 && !m.vip; });
@@ -993,6 +1018,7 @@
                 .then(function(res) { return res.json(); })
                 .then(function(r) {
                     if (r && r.result === 'success') {
+                        try { imprimirHtml(htmlResumoDia(r, (estado.finalizadas || []).slice()), 'Fechamento do dia'); } catch (eImp) {}
                         estado.pendentes = [];
                         estado.overrides = {};
                         estado.pedidosGlobais = [];
@@ -1055,7 +1081,7 @@
             }
 
 
-            if (!opcoesHtml) opcoesHtml = '<option value="" disabled selected>Nenhum produto disponível</option>';
+            opcoesHtml = '<option value=""' + (estado.produtoSelecionadoCache ? '' : ' selected') + '>— Selecione o produto —</option>' + opcoesHtml;
 
             return '<div class="painel-lateral">' +
                 '<div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #991b1b; padding-bottom: 0.75rem; margin-bottom: 1rem;">' +
