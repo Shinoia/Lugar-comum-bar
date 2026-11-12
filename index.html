@@ -982,26 +982,62 @@
         function usuarioAtualNome() { return USUARIO || ''; }
         function htmlResumoDia(r, fin) {
             var larg = lerConfig('papel', '80') === '58' ? '48mm' : '72mm';
-            var porF = {}, totVip = 0, n = 0;
-            fin.forEach(function(f) {
-                if (ehVip(f.mesa)) { totVip += f.total; }
-                else { n++; var nf = f.forma || 'Sem forma'; porF[nf] = (porF[nf] || 0) + f.total; }
+            var d = r.detalhe || { comandas: [], vip: [], porForma: {}, bar: { qtd: 0, valor: 0, itens: {} }, cozinha: { qtd: 0, valor: 0, itens: {} }, aberto: [] };
+            function lin(a, b, cls) { return '<div class="r' + (cls ? ' ' + cls : '') + '"><span>' + a + '</span><span>' + b + '</span></div>'; }
+            function secao(t) { return '<hr><div class="c"><b>' + esc(t) + '</b></div><hr>'; }
+            // 1) pagamentos por forma (sempre mostra as 4 formas)
+            var ordemF = ['Dinheiro', 'PIX', 'Débito', 'Crédito'], totalPag = 0, nCom = 0, pagamentos = '';
+            Object.keys(d.porForma).forEach(function(k) { if (ordemF.indexOf(k) < 0) ordemF.push(k); });
+            ordemF.forEach(function(k) {
+                var f = d.porForma[k] || { n: 0, valor: 0 };
+                totalPag += f.valor; nCom += f.n;
+                pagamentos += lin(esc(k) + ' (' + f.n + ')', brl(f.valor));
             });
-            function lin(a, b) { return '<div class="r"><span>' + a + '</span><span>' + b + '</span></div>'; }
-            var formas = Object.keys(porF).map(function(k) { return lin(esc(k), brl(porF[k])); }).join('');
+            // 2) consumo por mesa
+            function blocoComanda(c) {
+                var h = '<div class="m"><b>' + esc(c.mesa) + '</b></div>' +
+                    '<div class="s">abriu ' + esc(soHora(c.abertura)) + ' | fechou ' + esc(soHora(c.fechamento)) + (c.forma ? ' | ' + esc(c.forma) : '') + '</div>';
+                c.itens.forEach(function(it) {
+                    h += lin(it.qnt + 'x ' + esc(it.produto), brl(it.valor));
+                    if (it.obs) h += '<div class="s">* ' + esc(it.obs) + '</div>';
+                });
+                return h + lin('Total ' + esc(c.mesa), brl(c.total), 'b') + '<div style="height:3px"></div>';
+            }
+            var mesas = d.comandas.map(blocoComanda).join('') || '<div>Nenhuma comanda.</div>';
+            var vipHtml = '';
+            if (d.vip.length) {
+                var totVip = 0;
+                d.vip.forEach(function(c) { totVip += c.total; });
+                vipHtml = secao('CONTAS VIP (fora do caixa)') + d.vip.map(blocoComanda).join('') + lin('Total VIP', brl(totVip), 'b');
+            }
+            var abertoHtml = '';
+            if (d.aberto.length) {
+                abertoHtml = secao('ENCERRADAS EM ABERTO (nao pagas)') + d.aberto.map(function(c) { return lin(esc(c.mesa), brl(c.total)); }).join('');
+            }
+            // 3) produtos vendidos
+            function listaProdutos(cat, titulo) {
+                var nomes = Object.keys(cat.itens).sort(function(a, b) { return cat.itens[b].q - cat.itens[a].q; });
+                return '<div><b>' + titulo + '</b></div>' +
+                    (nomes.map(function(n) { return lin(cat.itens[n].q + 'x ' + esc(n), brl(cat.itens[n].v)); }).join('') || '<div>—</div>') +
+                    lin('Total ' + titulo + ' (' + cat.qtd + ' itens)', brl(cat.valor), 'b') + '<div style="height:3px"></div>';
+            }
+            var larguraPag = larg === '48mm' ? '58mm' : '80mm';
             return '<!doctype html><html><head><meta charset="utf-8"><title>Fechamento do dia</title><style>' +
-                '@page{size:' + (larg === '48mm' ? '58mm' : '80mm') + ' auto;margin:0}' +
+                '@page{size:' + larguraPag + ' auto;margin:0}' +
                 'body{margin:0;padding:2mm;width:' + larg + ';font-family:"Courier New",monospace;font-size:12px;color:#000}' +
-                '.c{text-align:center}.r{display:flex;justify-content:space-between;gap:4px}' +
+                '.c{text-align:center}.r{display:flex;justify-content:space-between;gap:4px}.b{font-weight:bold}.s{font-size:10px}.m{margin-top:3px}' +
                 'hr{border:0;border-top:1px dashed #000;margin:4px 0}.t{font-size:15px;font-weight:bold}</style></head><body>' +
                 '<div class="c t">LUGAR COMUM BAR</div><div class="c"><b>FECHAMENTO DO DIA</b></div><hr>' +
-                '<div>' + esc(agoraBR()) + '</div>' + (usuarioAtualNome() ? '<div>Por: ' + esc(usuarioAtualNome()) + '</div>' : '') + '<hr>' +
-                lin('Comandas', String(n)) + '<hr>' +
-                '<div><b>Por forma de pagamento</b></div>' + (formas || '<div>—</div>') + '<hr>' +
-                lin('Bebidas', esc(r.bebidasTexto || '')) + lin('Comidas', esc(r.comidasTexto || '')) + '<hr>' +
-                '<div class="r t"><span>TOTAL</span><span>' + esc(r.totalTexto || '') + '</span></div>' +
-                (totVip > 0 ? '<div class="r"><span>VIP (fora do caixa)</span><span>' + brl(totVip) + '</span></div>' : '') +
-                '<hr><div>Em aberto: ' + esc(r.emAbertoTexto || 'R$ 0,00') + '</div><div>(' + esc(r.nomesAbertas || 'nenhuma') + ')</div>' +
+                '<div>' + esc(agoraBR()) + '</div>' + (usuarioAtualNome() ? '<div>Por: ' + esc(usuarioAtualNome()) + '</div>' : '') +
+                secao('PAGAMENTOS POR FORMA') + pagamentos + lin('TOTAL RECEBIDO (' + nCom + ' comandas)', brl(totalPag), 'b') +
+                secao('CONSUMO POR MESA') + mesas +
+                vipHtml + abertoHtml +
+                secao('PRODUTOS VENDIDOS') + listaProdutos(d.bar, 'BAR') + listaProdutos(d.cozinha, 'COZINHA') +
+                '<hr><div class="c"><b>RESUMO FINAL</b></div><hr>' +
+                ordemF.map(function(k) { var f = d.porForma[k] || { n: 0, valor: 0 }; return lin(esc(k), brl(f.valor)); }).join('') +
+                lin('Itens BAR (' + d.bar.qtd + ')', brl(d.bar.valor)) +
+                lin('Itens COZINHA (' + d.cozinha.qtd + ')', brl(d.cozinha.valor)) +
+                '<hr><div class="r t"><span>VALOR FINAL</span><span>' + brl(d.bar.valor + d.cozinha.valor) + '</span></div>' +
                 '<div style="height:8mm"></div></body></html>';
         }
         function finalizarDia() {
