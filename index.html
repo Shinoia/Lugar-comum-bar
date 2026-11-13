@@ -255,6 +255,35 @@
             return t ? { num: m[1], nome: t[1], tel: t[2] } : { num: m[1], nome: resto, tel: '' };
         }
         // campo de telefone (opcional) antes do 1º pedido: 'pessoa' (grava na chave), 'mesa' (grava na aba Telefones) ou ''
+        // nome (só mesas): sugere clientes da aba Clientes e, se o cliente tem telefone lá, preenche o campo
+        function achaCliente(nome) {
+            var q = semAcento(limparNome(nome));
+            return q ? estado.clientes.find(function(c) { return semAcento(c.nome) === q; }) : null;
+        }
+        function preencherTelDoCliente(c) {
+            var t = document.getElementById('input-tel-pessoa'), ni = document.getElementById('tel-ni');
+            if (!c || !c.tel || !t) return;
+            estado.telNI = false; if (ni) ni.checked = false;
+            t.disabled = false; t.value = c.tel; estado.telCache = c.tel;
+        }
+        function sugerirNomeMesa(txt) {
+            estado.nomeMesaCache = txt;
+            var box = document.getElementById('sug-mesa');
+            if (!box) return;
+            var lista = limparNome(txt) ? filtrarClientes(txt) : [];
+            box.innerHTML = lista.length ? '<div style="border:2px solid #000; border-radius:0.5rem; overflow:hidden; margin-top:0.25rem;">' + lista.map(function(c) {
+                return '<button type="button" data-nome="' + esc(c.nome) + '" onclick="escolherNomeMesa(this.getAttribute(\'data-nome\'))" style="display:block; width:100%; text-align:left; background:#fff; border:0; border-bottom:1px solid #ccc; padding:0.5rem; color:#000;">' + esc(c.nome) + (c.tel ? ' <small>📞</small>' : '') + '</button>';
+            }).join('') + '</div>' : '';
+            var ex = achaCliente(txt);
+            if (ex && ex.tel && !String(estado.telCache || '').trim()) preencherTelDoCliente(ex);
+        }
+        function escolherNomeMesa(nome) {
+            var inp = document.getElementById('input-nome-mesa');
+            if (inp) inp.value = nome;
+            estado.nomeMesaCache = nome;
+            var box = document.getElementById('sug-mesa'); if (box) box.innerHTML = '';
+            preencherTelDoCliente(achaCliente(nome));
+        }
         function telNaoInformado(on) {
             estado.telNI = !!on;
             var t = document.getElementById('input-tel-pessoa');
@@ -433,6 +462,8 @@
                 if (obsEl) estado.obsCache = obsEl.value;
                 var telEl = document.getElementById('input-tel-pessoa');
                 if (telEl) estado.telCache = telEl.value;
+                var nmEl = document.getElementById('input-nome-mesa');
+                if (nmEl) estado.nomeMesaCache = nmEl.value;
             } catch (err) {}
         }
 
@@ -446,7 +477,7 @@
         // digitando quantidade ou observação: redesenhar fecharia a lista aberta e tiraria o cursor do campo.
         function formEmUso() {
             var ae = document.activeElement;
-            return !!(ae && (ae.id === 'select-produto' || ae.id === 'input-qtd' || ae.id === 'input-obs' || ae.id === 'input-tel-pessoa' || ae.id === 'tel-ni'));
+            return !!(ae && (ae.id === 'select-produto' || ae.id === 'input-qtd' || ae.id === 'input-obs' || ae.id === 'input-tel-pessoa' || ae.id === 'tel-ni' || ae.id === 'input-nome-mesa'));
         }
         function renderizarSeLivre() {
             if (formEmUso()) { estado.renderAdiado = Date.now(); return; }
@@ -539,6 +570,7 @@
             estado.quantidadeCache = 1;
             estado.telCache = '';
             estado.telNI = false;
+            estado.nomeMesaCache = '';
             renderizar();
         }
 
@@ -806,12 +838,13 @@
             if (qtd > disponivel) { alert('Estoque insuficiente de ' + prod.nome + ': restam ' + disponivel + '.'); return; }
             var mesaObj = acharMesa(estado.mesaSelecionadaId);
             if (!mesaObj) return;
-            var telEnvio = '', campoTel = tipoCampoTelefone(mesaObj);
+            var telEnvio = '', nomeEnvio = '', campoTel = tipoCampoTelefone(mesaObj);
             if (campoTel) {
                 var telDig = String(estado.telCache || '').replace(/\D/g, '');
                 if (telDig && telDig.length < 8) { alert('Telefone incompleto. Digite com DDD ou deixe em branco.'); var tf = document.getElementById('input-tel-pessoa'); if (tf && tf.focus) tf.focus(); return; }
                 if (telDig && campoTel === 'mesa') { telEnvio = telDig; estado.telCache = ''; }
                 if (!telDig && estado.telNI && campoTel === 'mesa') telEnvio = 'ni';
+                if (campoTel === 'mesa') { nomeEnvio = limparNome(estado.nomeMesaCache || ''); estado.nomeMesaCache = ''; }
             }
             if (campoTel === 'pessoa' && telDig) {
                 var antigo = mesaObj.id, novoId = antigo + ' - ' + telDig;
@@ -855,7 +888,7 @@
 
             var urlPedido = API_URL + '?acao=novo_pedido&mesa=' + encodeURIComponent(novo.mesa) +
                 '&produto=' + encodeURIComponent(novo.produto) + '&qnt=' + encodeURIComponent(novo.qnt) +
-                (telEnvio ? '&tel=' + encodeURIComponent(telEnvio) : '') +
+                (telEnvio ? '&tel=' + encodeURIComponent(telEnvio) : '') + (nomeEnvio ? '&nome=' + encodeURIComponent(nomeEnvio) : '') +
                 (novo.obs ? '&obs=' + encodeURIComponent(novo.obs) : '');
             fetch(urlPedido, { keepalive: true })
                 .then(function(res) { return res.json(); })
@@ -1369,7 +1402,7 @@
                     : '<div style="background: #facc15; border: 2px solid #000; padding: 0.5rem; border-radius: 0.5rem; margin-bottom: 1rem; text-align: center;">' +
                         '<strong style="font-size: 1rem;">Total Comanda: ' + brl(valorTotalComanda) + '</strong>' +
                       '</div>') +
-                (tipoCampoTelefone(mesaSel) ? '<div style="background:#fff; border:2px solid #000; border-radius:0.5rem; padding:0.5rem; margin-bottom:0.75rem;"><label style="font-size:0.75rem;">Telefone do cliente (opcional, com DDD) — informe antes do 1º pedido</label><input type="tel" id="input-tel-pessoa" inputmode="numeric" maxlength="16" value="' + esc(estado.telNI ? '' : (estado.telCache || '')) + '" placeholder="Ex.: 11999998888"' + (estado.telNI ? ' disabled' : '') + ' style="width:100%; margin-top:0.25rem;"><label style="display:block; margin-top:0.4rem; font-size:0.85rem;"><input type="checkbox" id="tel-ni" onchange="telNaoInformado(this.checked)"' + (estado.telNI ? ' checked' : '') + '> Não informado (cliente não quis informar)</label></div>' : '') +
+                (tipoCampoTelefone(mesaSel) ? '<div style="background:#fff; border:2px solid #000; border-radius:0.5rem; padding:0.5rem; margin-bottom:0.75rem;">' + (tipoCampoTelefone(mesaSel) === 'mesa' ? '<label style="font-size:0.75rem;">Nome do cliente (opcional)</label><input type="text" id="input-nome-mesa" maxlength="40" autocomplete="off" value="' + esc(estado.nomeMesaCache || '') + '" oninput="sugerirNomeMesa(this.value)" style="width:100%; margin:0.25rem 0 0.4rem;"><div id="sug-mesa"></div>' : '') + '<label style="font-size:0.75rem;">Telefone do cliente (opcional, com DDD) — informe antes do 1º pedido</label><input type="tel" id="input-tel-pessoa" inputmode="numeric" maxlength="16" value="' + esc(estado.telNI ? '' : (estado.telCache || '')) + '" placeholder="Ex.: 11999998888"' + (estado.telNI ? ' disabled' : '') + ' style="width:100%; margin-top:0.25rem;"><label style="display:block; margin-top:0.4rem; font-size:0.85rem;"><input type="checkbox" id="tel-ni" onchange="telNaoInformado(this.checked)"' + (estado.telNI ? ' checked' : '') + '> Não informado (cliente não quis informar)</label></div>' : '') +
                 '<div class="form-grupo">' +
                     '<label style="font-size: 0.75rem;">SELECIONAR PRODUTO</label>' +
                     '<select id="select-produto">' + opcoesHtml + '</select>' +
