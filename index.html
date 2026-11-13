@@ -1230,7 +1230,7 @@
             }).join('');
             el.innerHTML = '<div style="background:#b91c1c; border:3px solid #000; border-radius:0.75rem; padding:1rem; width:100%; max-width:30rem; margin:0 auto; color:#000;">' +
                 '<div style="display:flex; justify-content:space-between; align-items:center;"><h3>🛒 Venda rápida</h3><button type="button" onclick="vrFechar()" style="background:#fff; border:2px solid #000;"' + (v.enviando ? ' disabled' : '') + '>Cancelar</button></div>' +
-                '<div style="background:#facc15; border:2px solid #000; border-radius:0.5rem; text-align:center; font-weight:800; padding:0.6rem; margin:0.6rem 0;">Comanda ' + rotuloNumero('VR') + ' - VR &nbsp;|&nbsp; Total: ' + brl(vrTotal()) + '</div>' +
+                '<div style="background:#facc15; border:2px solid #000; border-radius:0.5rem; text-align:center; font-weight:800; padding:0.6rem; margin:0.6rem 0;">VR-' + rotuloNumero('VR') + ' &nbsp;|&nbsp; Total: ' + brl(vrTotal()) + '</div>' +
                 '<div style="background:#ef4444; border-radius:0.5rem; padding:0.75rem; margin-bottom:0.6rem;"><label style="font-size:0.75rem;">Nome *</label><input type="text" id="vr-nome" maxlength="40" autocomplete="off" oninput="vrNome(this.value)" value="' + esc(v.nome || '') + '" style="width:100%; margin:0.2rem 0 0.4rem;"><div id="vr-sug"></div>' +
                     '<label style="font-size:0.75rem;">Telefone (opcional, com DDD)</label><input type="tel" id="vr-tel" inputmode="numeric" maxlength="16" value="' + esc(v.ni ? '' : (v.tel || '')) + '"' + (v.ni ? ' disabled' : '') + ' style="width:100%; margin:0.2rem 0;"><label style="display:block; font-size:0.85rem;"><input type="checkbox" style="width:auto; display:inline-block; margin-right:0.4rem;" id="vr-ni" onchange="vrNI(this.checked)"' + (v.ni ? ' checked' : '') + '> Não informado</label></div>' +
                 '<div style="background:#ef4444; border-radius:0.5rem; padding:0.75rem; margin-bottom:0.6rem;">' +
@@ -1302,7 +1302,7 @@
             vrForm();
             if (!v.itens.length) { vrErro('Adicione pelo menos um produto para imprimir.'); return; }
             var itens = v.itens.map(function(i) { return { produto: i.produto, qnt: i.qnt, preco: i.preco, obs: i.obs || '', pedidoEm: '' }; });
-            imprimirHtml(htmlRecibo({ mesa: 'Comanda ' + rotuloNumero('VR') + ' - VR - ' + limparNome(v.nome), tchau: agoraBR(), abertura: agoraBR(), itens: itens, total: vrTotal(), forma: v.forma || 'A definir' }, 'FINAL'), 'Venda rápida');
+            imprimirHtml(htmlRecibo({ mesa: 'VR-' + rotuloNumero('VR') + ' - ' + limparNome(v.nome), tchau: agoraBR(), abertura: agoraBR(), itens: itens, total: vrTotal(), forma: v.forma || 'A definir' }, 'FINAL'), 'Venda rápida');
         }
         function vrVoltar() { var v = estado.vr; if (!v || v.enviando) return; v.confirmando = null; vrDesenhar(); }
         function vrEnviar() {
@@ -1880,7 +1880,7 @@
         }
         // nome (+ telefone) informado no 1º pedido da mesa que está aberta agora
         function tituloCartao(m) { // cartão da tela: "Comanda 012" (o nome fica na linha de baixo, como nas comandas de mesa)
-            if (m.pessoa && !m.vip) { var pp = partesPessoa(m.nome); return pp.num ? 'Comanda ' + pp.num : m.nome; }
+            if (m.pessoa && !m.vip) { var pp = partesPessoa(m.nome); return pp.num ? (/^VR - /.test(pp.nome) ? 'VR-' : 'Comanda ') + pp.num : m.nome; }
             return nomeMesa(m);
         }
         // ícones vermelhos: silhueta humana = "+ Nova Pessoa"; bandeira = "+ Nova comanda"
@@ -1907,7 +1907,10 @@
         }
         function rotuloChave(k) {
             k = String(k);
-            if (ehPessoa(k)) return k.substring(PREFIXO_PESSOA.length);
+            if (ehPessoa(k)) {
+                var sub = k.substring(PREFIXO_PESSOA.length), vr = /^Comanda (T?\d+) - VR - (.*?)(?: - \d{1,2}:\d{2})?$/.exec(sub);
+                return vr ? 'VR-' + vr[1] + ' - ' + vr[2] : sub;   // venda rápida: VR-001 - Nome - telefone
+            }
             if (ehVip(k)) return k;
             return 'Comanda ' + padKey(k);
         }
