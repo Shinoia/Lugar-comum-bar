@@ -772,6 +772,35 @@
             var GRAV = altura * 0.03, VEL = Math.max(2, altura * 0.07);
             function velPulo(alt) { return Math.sqrt(2 * GRAV * alt); }
             var obst = [], quadro = 0;
+            var segs = [], lay = document.createElement('canvas');   // desenhos do jogador (rampas, escadas...) viram chão
+            lay.width = W; lay.height = H;
+            var lg = lay.getContext('2d');
+            lg.lineCap = 'round';
+            function riscar(x1, y1, x2, y2) {
+                lg.strokeStyle = '#000'; lg.lineWidth = 9; lg.beginPath(); lg.moveTo(x1, y1); lg.lineTo(x2, y2); lg.stroke();
+                lg.strokeStyle = '#facc15'; lg.lineWidth = 5; lg.beginPath(); lg.moveTo(x1, y1); lg.lineTo(x2, y2); lg.stroke();
+            }
+            function redesenharCamada() {
+                lg.clearRect(0, 0, W, H);
+                for (var q = 0; q < segs.length; q++) riscar(segs[q].x1, segs[q].y1, segs[q].x2, segs[q].y2);
+            }
+            // superfície de desenho sob x, entre (yRef - acima) e (yRef + abaixo); devolve o y do topo do traço ou null
+            function superficie(x, yRef, acima, abaixo) {
+                var best = null, bd = 1e9, q, sg, lo, hi, t, sy, d;
+                for (q = 0; q < segs.length; q++) {
+                    sg = segs[q]; lo = sg.x1 < sg.x2 ? sg.x1 : sg.x2; hi = sg.x1 < sg.x2 ? sg.x2 : sg.x1;
+                    if (x < lo || x > hi || sg.x1 === sg.x2) continue;
+                    t = (x - sg.x1) / (sg.x2 - sg.x1); sy = sg.y1 + (sg.y2 - sg.y1) * t - 3;
+                    d = sy - yRef;
+                    if (d >= -acima && d <= abaixo && Math.abs(d) < bd) { bd = Math.abs(d); best = sy; }
+                }
+                return best;
+            }
+            function pousarNoDesenho(h, yAnt) { // caindo: pousa em cima de um traço
+                if (h.vy < 0 || !segs.length) return;
+                var sy = superficie(h.x, yAnt, 2, (h.y - yAnt) + 2);
+                if (sy !== null) { h.y = sy; h.vy = 0; h.solo = true; }
+            }
             function lerObstaculos() {
                 var lista = document.querySelectorAll('button, .mesa-card, .btn-tab, input, select, h2, h3'), out = [], k, r;
                 for (k = 0; k < lista.length; k++) {
@@ -800,6 +829,15 @@
                 h.x += h.vx;
                 if (h.x < BW / 2) { h.x = BW / 2; h.vx = Math.abs(h.vx); }
                 if (h.x > W - BW / 2) { h.x = W - BW / 2; h.vx = -Math.abs(h.vx); }
+                if (h.solo && segs.length) { // sobe e desce rampas desenhadas; se for íngreme demais, pula ou volta
+                    var sy0 = superficie(h.x, h.y, BH * 0.9, BH * 0.6);
+                    if (sy0 !== null) {
+                        if (sy0 < h.y - VEL * 1.4) {
+                            var deg2 = h.y - sy0;
+                            if (deg2 < BH * 3.2) h.vy = -velPulo(deg2 + BH * 0.9); else { h.x -= h.vx; h.vx = -h.vx; }
+                        } else h.y = sy0;
+                    }
+                }
                 o = bate(h.x, h.y);
                 if (o) {
                     var degrau = h.y - o.t; // quanto o obstáculo é mais alto que os pés
@@ -809,12 +847,13 @@
                 }
                 if (h.vx !== 0) h.dir = h.vx > 0 ? 1 : -1;
                 // vertical
+                var yAnt = h.y;
                 h.vy += GRAV; h.y += h.vy; h.solo = false;
                 o = bate(h.x, h.y);
                 if (o) {
                     if (h.vy >= 0) { h.y = o.t; h.vy = 0; h.solo = true; }
                     else { h.y = o.b + BH + 0.5; h.vy = 0; }
-                }
+                } else pousarNoDesenho(h, yAnt);
                 if (h.y >= H) { h.y = H; h.vy = 0; h.solo = true; }
                 if (h.solo) {
                     h.andar++;
@@ -897,13 +936,14 @@
             function passo() {
                 var h = j.h, k;
                 g.clearRect(0, 0, W, H);
+                if (segs.length) g.drawImage(lay, 0, 0);
                 quadro++;
                 if (quadro % 20 === 0) lerObstaculos();
                 if (h.estado === 'vivo') mover(h);
-                else if (h.estado === 'parado') { h.vy += GRAV; h.y += h.vy; var op = bate(h.x, h.y); if (h.y >= H || op) { h.y = op ? op.t : H; h.vy = 0; } }
+                else if (h.estado === 'parado') { var ya = h.y; h.vy += GRAV; h.y += h.vy; var op = bate(h.x, h.y); if (h.y >= H || op) { h.y = op ? op.t : H; h.vy = 0; } else pousarNoDesenho(h, ya); }
                 else {
                     h.t++;
-                    h.vy += GRAV; h.y += h.vy; if (h.y >= H || bate(h.x, h.y)) { var oo = bate(h.x, h.y); h.y = oo ? oo.t : H; h.vy = 0; }
+                    var yb = h.y; h.vy += GRAV; h.y += h.vy; if (h.y >= H || bate(h.x, h.y)) { var oo = bate(h.x, h.y); h.y = oo ? oo.t : H; h.vy = 0; } else pousarNoDesenho(h, yb);
                     if (h.cab) { h.cab.x += h.cab.vx; h.cab.y += h.cab.vy; h.cab.vy += GRAV; h.cab.rot += 0.3; if (h.cab.y > H - 4 * p) { h.cab.y = H - 4 * p; h.cab.vy = -h.cab.vy * 0.4; h.cab.vx *= 0.7; } }
                 }
                 humano(h);
@@ -922,31 +962,56 @@
                 g.fillStyle = '#fff'; g.font = 'bold 14px sans-serif'; g.textAlign = 'left';
                 g.fillText('Cabeças: ' + j.cabecas, 10, H - 10);
                 g.textAlign = 'right'; g.font = '11px sans-serif';
-                g.fillText(j.fase ? '3 toques na tela para sair' : 'toque no boneco  •  3 toques no fundo para sair', W - 10, H - 10);
+                g.fillText('desenhe com o dedo/mouse  •  toque no boneco  •  3 toques rápidos para sair', W - 10, H - 10);
+                g.textAlign = 'left'; g.fillText('[ limpar desenho ]', 150, H - 10);
                 if (!j.fim) j.raf = (window.requestAnimationFrame || function(f) { return setTimeout(f, 33); })(passo);
             }
-            function toque(px, py) {
-                var h = j.h, agora = Date.now();
-                if (j.fase === 0 && h.estado === 'vivo' && Math.abs(px - h.x) < BW * 1.1 && py > h.y - BH - p * 3 && py < h.y + p * 3) {
-                    h.estado = 'parado'; h.vx = 0; j.fase = 1; j.ft = 0; j.toques = [];
-                    if (ic) ic.style.visibility = 'hidden'; // o ícone ☭ do topo se separa e vai até o boneco
-                    return;
-                }
+            function acertou(px, py) {
+                var h = j.h;
+                return j.fase === 0 && h.estado === 'vivo' && Math.abs(px - h.x) < BW * 1.1 && py > h.y - BH - p * 3 && py < h.y + p * 3;
+            }
+            function toqueCurto(px, py) { // toque rápido (sem arrastar): conta para sair
+                var agora = Date.now();
                 j.toques = j.toques.filter(function(t) { return agora - t < 2000; });
                 j.toques.push(agora);
                 if (j.toques.length >= 3) sairGame();
             }
+            var cur = null;
+            function descer(px, py) {
+                if (px > 130 && px < 290 && py > H - 26) { segs = []; lg.clearRect(0, 0, W, H); return; } // [ limpar desenho ]
+                if (acertou(px, py)) {
+                    var h = j.h;
+                    h.estado = 'parado'; h.vx = 0; j.fase = 1; j.ft = 0; j.toques = [];
+                    if (ic) ic.style.visibility = 'hidden'; // o ícone ☭ do topo se separa e vai até o boneco
+                    return;
+                }
+                cur = { x0: px, y0: py, ult: { x: px, y: py }, len: 0, n: 0, t0: Date.now() };
+            }
+            function mover2(px, py) {
+                if (!cur) return;
+                var dx = px - cur.ult.x, dy = py - cur.ult.y, d = Math.sqrt(dx * dx + dy * dy);
+                if (d < 6) return;
+                if (segs.length > 2500) return;
+                segs.push({ x1: cur.ult.x, y1: cur.ult.y, x2: px, y2: py });
+                riscar(cur.ult.x, cur.ult.y, px, py);
+                cur.len += d; cur.n++; cur.ult = { x: px, y: py };
+            }
+            function subir(px, py) {
+                if (!cur) return;
+                var c = cur; cur = null;
+                if (c.len < 14) { // foi só um toque: apaga o risquinho e conta como toque de saída
+                    if (c.n) { segs.splice(segs.length - c.n, c.n); redesenharCamada(); }
+                    toqueCurto(px, py);
+                }
+            }
+            function pos(e) { var t = (e.changedTouches && e.changedTouches[0]) || e, r = el.getBoundingClientRect(); return { x: t.clientX - r.left, y: t.clientY - r.top }; }
             var porToque = false;
-            el.addEventListener('touchstart', function(e) {
-                e.preventDefault(); porToque = true;
-                var t = e.changedTouches ? e.changedTouches[0] : e, r = el.getBoundingClientRect();
-                toque(t.clientX - r.left, t.clientY - r.top);
-            }, false);
-            el.addEventListener('mousedown', function(e) {
-                if (porToque) { porToque = false; return; }
-                var r = el.getBoundingClientRect();
-                toque(e.clientX - r.left, e.clientY - r.top);
-            }, false);
+            el.addEventListener('touchstart', function(e) { e.preventDefault(); porToque = true; var q = pos(e); descer(q.x, q.y); }, false);
+            el.addEventListener('touchmove', function(e) { e.preventDefault(); var q = pos(e); mover2(q.x, q.y); }, false);
+            el.addEventListener('touchend', function(e) { e.preventDefault(); var q = pos(e); subir(q.x, q.y); }, false);
+            el.addEventListener('mousedown', function(e) { if (porToque) return; var q = pos(e); descer(q.x, q.y); }, false);
+            el.addEventListener('mousemove', function(e) { if (porToque) return; var q = pos(e); mover2(q.x, q.y); }, false);
+            el.addEventListener('mouseup', function(e) { if (porToque) { porToque = false; return; } var q = pos(e); subir(q.x, q.y); }, false);
             passo();
         }
         function sairGame() {
