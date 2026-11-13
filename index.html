@@ -796,6 +796,23 @@
                 }
                 return best;
             }
+            function cruza(ax, ay, bx, by, cx, cy, dx, dy) { // segmento AB cruza CD?
+                var d1x = bx - ax, d1y = by - ay, d2x = dx - cx, d2y = dy - cy, den = d1x * d2y - d1y * d2x;
+                if (den === 0) return false;
+                var t = ((cx - ax) * d2y - (cy - ay) * d2x) / den, u = ((cx - ax) * d1y - (cy - ay) * d1x) / den;
+                return t >= 0 && t <= 1 && u >= 0 && u <= 1;
+            }
+            // parede desenhada entre a posição antiga e a nova? (sondas na altura do peito/cabeça; rampas suaves não contam)
+            function paredeDesenho(xAnt, h) {
+                if (!segs.length) return false;
+                var dir = h.x >= xAnt ? 1 : -1, e0 = xAnt + dir * BW / 2, e1 = h.x + dir * (BW / 2 + 3), q, k, sg, py;
+                var alt = [BH * 0.5, BH * 0.75, BH * 0.95];
+                for (k = 0; k < alt.length; k++) {
+                    py = h.y - alt[k];
+                    for (q = 0; q < segs.length; q++) { sg = segs[q]; if (cruza(e0, py, e1, py, sg.x1, sg.y1, sg.x2, sg.y2)) return true; }
+                }
+                return false;
+            }
             function pousarNoDesenho(h, yAnt) { // caindo: pousa em cima de um traço
                 if (h.vy < 0 || !segs.length) return;
                 var sy = superficie(h.x, yAnt, 2, (h.y - yAnt) + 2);
@@ -826,7 +843,14 @@
             function mover(h) {
                 var o;
                 // horizontal
+                var xAnt = h.x;
                 h.x += h.vx;
+                if (paredeDesenho(xAnt, h)) { // bateu numa parede desenhada: pula se for baixa, senão volta
+                    var topo = superficie(h.x + (h.vx > 0 ? BW / 2 + 2 : -BW / 2 - 2), h.y, BH * 3.2, 0);
+                    h.x = xAnt;
+                    if (h.solo && topo !== null) h.vy = -velPulo((h.y - topo) + BH * 0.9);
+                    else h.vx = -h.vx;
+                }
                 if (h.x < BW / 2) { h.x = BW / 2; h.vx = Math.abs(h.vx); }
                 if (h.x > W - BW / 2) { h.x = W - BW / 2; h.vx = -Math.abs(h.vx); }
                 if (h.solo && segs.length) { // sobe e desce rampas desenhadas; se for íngreme demais, pula ou volta
@@ -962,7 +986,7 @@
                 g.fillStyle = '#fff'; g.font = 'bold 14px sans-serif'; g.textAlign = 'left';
                 g.fillText('Cabeças: ' + j.cabecas, 10, H - 10);
                 g.textAlign = 'right'; g.font = '11px sans-serif';
-                g.fillText('desenhe com o dedo/mouse  •  toque no boneco  •  3 toques rápidos para sair', W - 10, H - 10);
+                g.fillText('desenhe  •  botão direito ou 2 dedos apagam  •  toque no boneco  •  4 toques rápidos para sair', W - 10, H - 10);
                 g.textAlign = 'left'; g.fillText('[ limpar desenho ]', 150, H - 10);
                 if (!j.fim) j.raf = (window.requestAnimationFrame || function(f) { return setTimeout(f, 33); })(passo);
             }
@@ -974,11 +998,12 @@
                 var agora = Date.now();
                 j.toques = j.toques.filter(function(t) { return agora - t < 2000; });
                 j.toques.push(agora);
-                if (j.toques.length >= 3) sairGame();
+                if (j.toques.length >= 4) sairGame();
             }
-            var cur = null;
+            var cur = null, multi = false;
+            function limparTudo() { segs = []; lg.clearRect(0, 0, W, H); cur = null; }
             function descer(px, py) {
-                if (px > 130 && px < 290 && py > H - 26) { segs = []; lg.clearRect(0, 0, W, H); return; } // [ limpar desenho ]
+                if (px > 130 && px < 290 && py > H - 26) { limparTudo(); return; } // [ limpar desenho ]
                 if (acertou(px, py)) {
                     var h = j.h;
                     h.estado = 'parado'; h.vx = 0; j.fase = 1; j.ft = 0; j.toques = [];
@@ -1006,12 +1031,26 @@
             }
             function pos(e) { var t = (e.changedTouches && e.changedTouches[0]) || e, r = el.getBoundingClientRect(); return { x: t.clientX - r.left, y: t.clientY - r.top }; }
             var porToque = false;
-            el.addEventListener('touchstart', function(e) { e.preventDefault(); porToque = true; var q = pos(e); descer(q.x, q.y); }, false);
-            el.addEventListener('touchmove', function(e) { e.preventDefault(); var q = pos(e); mover2(q.x, q.y); }, false);
-            el.addEventListener('touchend', function(e) { e.preventDefault(); var q = pos(e); subir(q.x, q.y); }, false);
-            el.addEventListener('mousedown', function(e) { if (porToque) return; var q = pos(e); descer(q.x, q.y); }, false);
+            el.addEventListener('touchstart', function(e) {
+                e.preventDefault(); porToque = true;
+                if (e.touches && e.touches.length >= 2) { multi = true; limparTudo(); return; }   // 2 dedos: apaga o desenho
+                if (multi) return;
+                var q = pos(e); descer(q.x, q.y);
+            }, false);
+            el.addEventListener('touchmove', function(e) { e.preventDefault(); if (multi) return; var q = pos(e); mover2(q.x, q.y); }, false);
+            el.addEventListener('touchend', function(e) {
+                e.preventDefault();
+                if (multi) { if (!e.touches || e.touches.length === 0) multi = false; return; }
+                var q = pos(e); subir(q.x, q.y);
+            }, false);
+            el.addEventListener('contextmenu', function(e) { e.preventDefault(); }, false);
+            el.addEventListener('mousedown', function(e) {
+                if (porToque) return;
+                if (e.button === 2) { limparTudo(); return; }   // botão direito: apaga o desenho
+                var q = pos(e); descer(q.x, q.y);
+            }, false);
             el.addEventListener('mousemove', function(e) { if (porToque) return; var q = pos(e); mover2(q.x, q.y); }, false);
-            el.addEventListener('mouseup', function(e) { if (porToque) { porToque = false; return; } var q = pos(e); subir(q.x, q.y); }, false);
+            el.addEventListener('mouseup', function(e) { if (porToque) { porToque = false; return; } if (e.button === 2) return; var q = pos(e); subir(q.x, q.y); }, false);
             passo();
         }
         function sairGame() {
