@@ -1524,6 +1524,24 @@
         }
 
         function renderizar() {
+            var sc = [];
+            try {
+                var els = document.querySelectorAll('.lista-itens, .painel-lateral, #app-conteudo');
+                for (var i = 0; i < els.length; i++) sc.push([els[i], els[i].scrollTop]);
+                var wy = window.pageYOffset || 0;
+            } catch (e) {}
+            renderizarBase();
+            try {
+                var els2 = document.querySelectorAll('.lista-itens, .painel-lateral, #app-conteudo');
+                for (var j = 0; j < els2.length; j++) {
+                    for (var k = 0; k < sc.length; k++) {
+                        if (sc[k][0].className === els2[j].className && sc[k][0].id === els2[j].id) { els2[j].scrollTop = sc[k][1]; break; }
+                    }
+                }
+                if (wy) window.scrollTo(0, wy);
+            } catch (e) {}
+        }
+        function renderizarBase() {
             try {
                 capturarValoresFormulario();
                 var main = document.getElementById('app-conteudo');
