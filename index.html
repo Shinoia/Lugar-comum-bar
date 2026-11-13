@@ -717,10 +717,13 @@
             var el = document.createElement('div');
             el.id = 'janela-comanda';
             el.style.cssText = 'position:fixed; top:0; left:0; right:0; bottom:0; width:100%; height:100%; background:rgba(0,0,0,0.5); display:flex; align-items:center; justify-content:center; z-index:50; padding:1rem;';
-            el.innerHTML = '<div style="background:#fff; border:3px solid #000; border-radius:0.75rem; padding:1rem; width:100%; max-width:22rem; color:#000;">' +
+            el.innerHTML = '<div style="background:#fff; border:3px solid #000; border-radius:0.75rem; padding:1rem; width:100%; max-width:26rem; color:#000;">' +
                 '<h3 style="margin-bottom:0.75rem;">+ Nova comanda</h3>' +
                 '<label style="font-size:0.8rem;">Número da comanda:</label>' +
-                '<input type="tel" inputmode="numeric" id="input-num-comanda-nova" maxlength="4" autocomplete="off" style="width:100%; margin:0.25rem 0 0.5rem; font-size:1.3rem; text-align:center;" onkeydown="if(event.key===\'Enter\') criarComanda()">' +
+                '<input type="tel" inputmode="numeric" id="input-num-comanda-nova" maxlength="4" autocomplete="off" oninput="this.value = this.value.replace(/\\D/g, \'\')" style="width:100%; margin:0.25rem 0 0.5rem; font-size:1.2rem; text-align:center;">' +
+                '<label style="font-size:0.8rem;">Nome da pessoa (comece a digitar para ver os clientes salvos):</label>' +
+                '<input type="text" id="input-nome-comanda" maxlength="30" autocomplete="off" style="width:100%; margin:0.25rem 0 0.5rem;" oninput="comandaSugerir(this.value)" onkeydown="if(event.key===\'Enter\') criarComanda()">' +
+                '<div id="sug-comanda" style="margin-bottom:0.5rem; max-height:35vh; overflow:auto;"></div>' +
                 '<div id="erro-comanda" style="color:#b91c1c; font-weight:700; min-height:1.1rem; margin-bottom:0.5rem;"></div>' +
                 '<div style="display:flex; gap:0.5rem; justify-content:flex-end;">' +
                     '<button type="button" onclick="fecharJanelaComanda()" style="background:#fff; border:2px solid #000;">Cancelar</button>' +
@@ -729,17 +732,34 @@
             document.body.appendChild(el);
             var inp = document.getElementById('input-num-comanda-nova'); if (inp && inp.focus) inp.focus();
         }
+        function comandaSugerir(txt) {
+            var box = document.getElementById('sug-comanda'); if (!box) return;
+            var lista = limparNome(txt) ? filtrarClientes(txt) : [];
+            box.innerHTML = lista.length ? '<div style="border:2px solid #000; border-radius:0.5rem; overflow:hidden;">' + lista.map(function(c) {
+                return '<button type="button" data-nome="' + esc(c.nome) + '" onclick="comandaEscolher(this.getAttribute(\'data-nome\'))" style="display:block; width:100%; text-align:left; background:#fff; border:0; border-bottom:1px solid #ccc; padding:0.5rem; color:#000;">' + esc(c.nome) + (c.tel ? ' 📞' : '') + '</button>';
+            }).join('') + '</div>' : '';
+        }
+        function comandaEscolher(nome) {
+            var n = document.getElementById('input-nome-comanda'); if (n) n.value = nome;
+            var box = document.getElementById('sug-comanda'); if (box) box.innerHTML = '';
+        }
         function fecharJanelaComanda() { var el = document.getElementById('janela-comanda'); if (el && el.parentNode) el.parentNode.removeChild(el); }
         function criarComanda() {
             var inp = document.getElementById('input-num-comanda-nova'), er = document.getElementById('erro-comanda');
             var n = parseInt(String(inp ? inp.value : '').replace(/\D/g, ''), 10);
             if (!n || n < 1) { if (er) er.textContent = 'Digite o número da comanda.'; return; }
             if (numeroEmUso(n)) { if (er) er.textContent = 'A comanda ' + n + ' já está aberta.'; return; }
+            var nomeIn = document.getElementById('input-nome-comanda'), nomeC = limparNome(nomeIn ? nomeIn.value : '');
             fecharJanelaComanda();
             if (!estado.mesasNovas.some(function(x) { return String(x) === String(n); })) estado.mesasNovas.push(n);
             processarPedidos();
             selecionarMesa(n);
-            renderizar();
+            if (nomeC) { // nome digitado: vai para o campo da comanda e, se o cliente já tem telefone na planilha, preenche sozinho
+                estado.nomeMesaCache = nomeC;
+                var nmEl = document.getElementById('input-nome-mesa'); if (nmEl) nmEl.value = nomeC;   // escreve direto no campo (renderizar() releria o campo vazio)
+                var clc = achaCliente(nomeC);
+                if (clc && clc.tel) preencherTelDoCliente({ tel: String(clc.tel) });
+            }
         }
         function removerComandaVazia(id) {
             estado.mesasNovas = estado.mesasNovas.filter(function(x) { return String(x) !== String(id); });
@@ -1125,7 +1145,7 @@
             el.innerHTML = '<div style="background:#fff; border:3px solid #000; border-radius:0.75rem; padding:1rem; width:100%; max-width:26rem; color:#000;">' +
                 '<h3 style="margin-bottom:0.75rem;">+ Nova Pessoa</h3>' +
                 '<label style="font-size:0.8rem;">Número da comanda:</label>' +
-                '<input type="tel" inputmode="numeric" id="input-num-comanda" maxlength="4" autocomplete="off" style="width:100%; margin:0.25rem 0 0.5rem; font-size:1.2rem; text-align:center;">' +
+                '<input type="tel" inputmode="numeric" id="input-num-comanda" maxlength="4" autocomplete="off" oninput="this.value = this.value.replace(/\\D/g, \'\')" style="width:100%; margin:0.25rem 0 0.5rem; font-size:1.2rem; text-align:center;">' +
                 '<label style="font-size:0.8rem;">Nome (comece a digitar para ver os clientes salvos; VIP = mensalista):</label>' +
                 '<input type="text" id="input-nova-pessoa" maxlength="40" autocomplete="off" style="width:100%; margin:0.25rem 0 0.5rem;" oninput="sugerirPessoas(this.value)" onkeydown="if(event.key===\'Enter\') escolherPessoa(this.value)">' +
                 '<div id="sugestoes-pessoa" style="margin-bottom:0.75rem; max-height:40vh; overflow:auto;">' + htmlSugestoes('') + '</div>' +
