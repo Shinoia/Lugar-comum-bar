@@ -28,6 +28,8 @@
         @media(min-width: 1024px) { .grid-caixa { grid-template-columns: 2fr 1fr; } }
         .mesas-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1rem; }
         @media(min-width: 640px) { .mesas-grid { grid-template-columns: repeat(4, 1fr); } }
+        .grid-cartoes { display: grid; grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr)); gap: 1.25rem; }
+        .mesa-card.cartao-aberto { height: auto; padding: 1.1rem 1.2rem; gap: 0.8rem; cursor: default; line-height: 1.35; }
         .mesa-card { background: #ef4444; border: 2px solid #b91c1c; border-radius: 0.75rem; padding: 1rem; cursor: pointer; display: flex; flex-direction: column; justify-content: space-between; height: 8rem; color: #000; }
         .mesa-card.ocupada { border-color: #000; background: #fef08a; }
         .mesa-card.teste { background: #c4b5fd !important; border-color: #5b21b6 !important; }
@@ -1276,6 +1278,29 @@
         }
         function abrirNaCaixa(id) { mudarAba('caixa'); selecionarMesa(id); }
 
+        function htmlCartaoAberto(ma) {
+            var linhasAb = '';
+                        for (var li = 0; li < ma.itens.length; li++) {
+                            var ia = ma.itens[li];
+                            linhasAb += '<div style="display:flex; justify-content:space-between; gap:0.5rem; font-size:0.85rem;"><span>' + ia.qnt + 'x ' + esc(ia.produto) + (ia.obs ? ' <small>(📝 ' + esc(ia.obs) + ')</small>' : '') + '</span>' +
+                                '<span class="badge" style="background:' + corStatus(ia.statusPreparo || 'pendente') + ';">' + String(ia.statusPreparo || 'pendente').toUpperCase() + '</span>' +
+                                '<span style="white-space:nowrap;">' + (ia.qnt > 1 ? '<button type="button" onclick="cancelarItem(' + ia.idItem + ', 1)" title="Remover 1 unidade" style="padding:0 0.4rem; background:#fff; border:2px solid #000; margin-left:0.25rem;">−1</button>' : '') +
+                                '<button type="button" onclick="cancelarItem(' + ia.idItem + ', ' + ia.qnt + ')" title="Cancelar este item" style="padding:0 0.4rem; background:#fff; border:2px solid #000; margin-left:0.25rem;">✖</button></span></div>';
+                        }
+                        var cartaoAb = '<div class="mesa-card ocupada' + (mesaTeste(ma) ? ' teste' : '') + (String(ma.id) === String(estado.mesaSelecionadaId) ? ' selecionada' : '') + ' cartao-aberto">' +
+                            '<div style="display:flex; justify-content:space-between;"><div><strong>' + iconeCartao(ma) + esc(tituloCartao(ma)) + '</strong>' + clienteDaMesaAberta(ma) + '</div>' + (mesaTeste(ma) ? etiquetaTeste() : '') + (ma.vip ? '<span style="font-size:0.875rem; font-weight:normal;">' + brl(totalMesaObj(ma)) + '</span>' : '<strong>' + brl(totalMesaObj(ma)) + '</strong>') + '</div>' +
+                            (ma.abertaEm ? '<small>Aberta em ' + esc(ma.abertaEm) + '</small>' : '') +
+                            '<div style="display:flex; flex-direction:column; gap:0.25rem;">' + linhasAb + '</div>' +
+                            (ma.itens.length > 0 ? '<div style="display:flex; gap:0.3rem;"><select class="rap-campo" data-id="' + esc(ma.id) + '" onchange="rapidoSet(this.getAttribute(\'data-id\'), \'p\', this.value)" style="flex:1; min-width:0;">' + opcoesRapido(((estado.rapido || {})[ma.id] || {}).p || '') + '</select>' +
+                                '<input class="rap-campo" type="number" min="1" data-id="' + esc(ma.id) + '" value="' + esc(String(((estado.rapido || {})[ma.id] || {}).q || 1)) + '" onchange="rapidoSet(this.getAttribute(\'data-id\'), \'q\', this.value)" style="width:3.5rem; text-align:center;">' +
+                                '<button type="button" data-id="' + esc(ma.id) + '" onclick="adicionarRapido(this.getAttribute(\'data-id\'))" style="background:#facc15; border:2px solid #000;">+ Lançar</button></div>' : '') +
+                            '<div style="display:flex; gap:0.4rem; flex-wrap:wrap;"><button data-id="' + esc(ma.id) + '" onclick="selecionarMesa(this.getAttribute(\'data-id\'))" style="background:#fff; border:2px solid #000; flex:1;">➕ Incluir produtos</button>' +
+                            (ma.itens.length ? '<button data-id="' + esc(ma.id) + '" onclick="fecharMesa(this.getAttribute(\'data-id\'))" style="background:#f87171; border:2px solid #000; flex:1;">💳 Fechar comanda</button>' +
+                            '<button data-id="' + esc(ma.id) + '" onclick="imprimirAberta(this.getAttribute(\'data-id\'))" title="Imprimir na térmica" style="background:#fff; border:2px solid #000;">🖨️</button>' : '') +
+                            (!ma.pessoa && !ma.itens.length ? '<button type="button" onclick="removerComandaVazia(' + Number(ma.id) + ')" style="background:#fff; border:2px solid #000;">✖ Remover</button>' : '') + (souTeste() ? '<button data-id="' + esc(ma.id) + '" onclick="apagarAberta(this.getAttribute(\'data-id\'))" style="background:#7f1d1d; color:#fff; border:2px solid #000;">🗑️ Apagar</button>' : '') + '</div>' +
+                        '</div>';
+            return cartaoAb;
+        }
         // ---- aba Abertas: lançar / remover itens direto no cartão de qualquer comanda ----
         function rapidoSet(id, campo, v) { if (!estado.rapido) estado.rapido = {}; if (!estado.rapido[id]) estado.rapido[id] = { p: '', q: 1 }; estado.rapido[id][campo] = v; }
         function opcoesRapido(sel) {
@@ -2035,18 +2060,18 @@
                     }
                     var mesasHtml = '';
                     var visiveis = estado.mesasVisiveis || [];
-                    for (var mIdx = 0; mIdx < visiveis.length; mIdx++) mesasHtml += cardHtml(visiveis[mIdx]);
+                    for (var mIdx = 0; mIdx < visiveis.length; mIdx++) mesasHtml += htmlCartaoAberto(visiveis[mIdx]);
                     var pessoasHtml = '';
                     var vipHtml = '';
                     for (var pIdx = 0; pIdx < estado.pessoas.length; pIdx++) {
-                        if (estado.pessoas[pIdx].vip) vipHtml += cardHtml(estado.pessoas[pIdx]);
-                        else pessoasHtml += cardHtml(estado.pessoas[pIdx]);
+                        if (estado.pessoas[pIdx].vip) vipHtml += htmlCartaoAberto(estado.pessoas[pIdx]);
+                        else pessoasHtml += htmlCartaoAberto(estado.pessoas[pIdx]);
                     }
 
                     main.innerHTML = '<div class="grid-caixa">' +
                         '<div><div style="display:flex; gap:0.4rem; flex-wrap:wrap; margin-bottom:1rem;"><button onclick="novaComanda()" style="background:#facc15; border:2px solid #000;">+ Nova comanda</button><button onclick="novaPessoa()" style="background:#facc15; border:2px solid #000;">+ Nova Pessoa</button><button onclick="vendaRapida()" style="background:#fff; border:2px solid #000;">🛒 Venda rápida</button></div>' +
-                        ((mesasHtml || pessoasHtml) ? '<div class="mesas-grid">' + mesasHtml + pessoasHtml + '</div>' : '<p style="color:#000; font-size:0.9rem;">Nenhuma comanda aberta. Use "+ Nova comanda" (digite o número da comanda) ou "+ Nova Pessoa" para começar.</p>') +
-                        (vipHtml ? '<h2 style="color:#000; margin: 1.5rem 0 0.5rem;">⭐ VIP (conta mensal)</h2><p style="color:#000; font-size:0.8rem; margin-bottom:0.75rem;">Não entram no fechamento do dia nem no "Encerrar todas".</p><div class="mesas-grid">' + vipHtml + '</div>' : '') +
+                        ((mesasHtml || pessoasHtml) ? '<div class="grid-cartoes">' + mesasHtml + pessoasHtml + '</div>' : '<p style="color:#000; font-size:0.9rem;">Nenhuma comanda aberta. Use "+ Nova comanda" (digite o número da comanda) ou "+ Nova Pessoa" para começar.</p>') +
+                        (vipHtml ? '<h2 style="color:#000; margin: 1.5rem 0 0.5rem;">⭐ VIP (conta mensal)</h2><p style="color:#000; font-size:0.8rem; margin-bottom:0.75rem;">Não entram no fechamento do dia nem no "Encerrar todas".</p><div class="grid-cartoes">' + vipHtml + '</div>' : '') +
                         '</div>' +
                         lateral +
                     '</div>';
@@ -2058,26 +2083,7 @@
                     var abHtml = '', vipAbHtml = '';
                     for (var ab = 0; ab < abertasTodas.length; ab++) {
                         var ma = abertasTodas[ab];
-                        var linhasAb = '';
-                        for (var li = 0; li < ma.itens.length; li++) {
-                            var ia = ma.itens[li];
-                            linhasAb += '<div style="display:flex; justify-content:space-between; gap:0.5rem; font-size:0.85rem;"><span>' + ia.qnt + 'x ' + esc(ia.produto) + (ia.obs ? ' <small>(📝 ' + esc(ia.obs) + ')</small>' : '') + '</span>' +
-                                '<span class="badge" style="background:' + corStatus(ia.statusPreparo || 'pendente') + ';">' + String(ia.statusPreparo || 'pendente').toUpperCase() + '</span>' +
-                                '<span style="white-space:nowrap;">' + (ia.qnt > 1 ? '<button type="button" onclick="cancelarItem(' + ia.idItem + ', 1)" title="Remover 1 unidade" style="padding:0 0.4rem; background:#fff; border:2px solid #000; margin-left:0.25rem;">−1</button>' : '') +
-                                '<button type="button" onclick="cancelarItem(' + ia.idItem + ', ' + ia.qnt + ')" title="Cancelar este item" style="padding:0 0.4rem; background:#fff; border:2px solid #000; margin-left:0.25rem;">✖</button></span></div>';
-                        }
-                        var cartaoAb = '<div class="mesa-card ocupada' + (mesaTeste(ma) ? ' teste' : '') + (String(ma.id) === String(estado.mesaSelecionadaId) ? ' selecionada' : '') + '" style="height:auto; gap:0.5rem; cursor:default;">' +
-                            '<div style="display:flex; justify-content:space-between;"><div><strong>' + iconeCartao(ma) + esc(tituloCartao(ma)) + '</strong>' + clienteDaMesaAberta(ma) + '</div>' + (mesaTeste(ma) ? etiquetaTeste() : '') + (ma.vip ? '<span style="font-size:0.875rem; font-weight:normal;">' + brl(totalMesaObj(ma)) + '</span>' : '<strong>' + brl(totalMesaObj(ma)) + '</strong>') + '</div>' +
-                            (ma.abertaEm ? '<small>Aberta em ' + esc(ma.abertaEm) + '</small>' : '') +
-                            '<div style="display:flex; flex-direction:column; gap:0.25rem;">' + linhasAb + '</div>' +
-                            (ma.vip || true ? '<div style="display:flex; gap:0.3rem;"><select class="rap-campo" data-id="' + esc(ma.id) + '" onchange="rapidoSet(this.getAttribute(\'data-id\'), \'p\', this.value)" style="flex:1; min-width:0;">' + opcoesRapido(((estado.rapido || {})[ma.id] || {}).p || '') + '</select>' +
-                                '<input class="rap-campo" type="number" min="1" data-id="' + esc(ma.id) + '" value="' + esc(String(((estado.rapido || {})[ma.id] || {}).q || 1)) + '" onchange="rapidoSet(this.getAttribute(\'data-id\'), \'q\', this.value)" style="width:3.5rem; text-align:center;">' +
-                                '<button type="button" data-id="' + esc(ma.id) + '" onclick="adicionarRapido(this.getAttribute(\'data-id\'))" style="background:#facc15; border:2px solid #000;">+ Lançar</button></div>' : '') +
-                            '<div style="display:flex; gap:0.4rem; flex-wrap:wrap;"><button data-id="' + esc(ma.id) + '" onclick="selecionarMesa(this.getAttribute(\'data-id\'))" style="background:#fff; border:2px solid #000; flex:1;">➕ Incluir produtos</button>' +
-                            '<button data-id="' + esc(ma.id) + '" onclick="fecharMesa(this.getAttribute(\'data-id\'))" style="background:#f87171; border:2px solid #000; flex:1;">💳 Fechar comanda</button>' +
-                            '<button data-id="' + esc(ma.id) + '" onclick="imprimirAberta(this.getAttribute(\'data-id\'))" title="Imprimir na térmica" style="background:#fff; border:2px solid #000;">🖨️</button>' +
-                            (souTeste() ? '<button data-id="' + esc(ma.id) + '" onclick="apagarAberta(this.getAttribute(\'data-id\'))" style="background:#7f1d1d; color:#fff; border:2px solid #000;">🗑️ Apagar</button>' : '') + '</div>' +
-                        '</div>';
+                        var cartaoAb = htmlCartaoAberto(ma);
                         if (ma.vip) vipAbHtml += cartaoAb; else abHtml += cartaoAb;
                     }
                     var totalVipAb = vipLista.reduce(function(a, m) { return a + totalMesaObj(m); }, 0);
@@ -2090,8 +2096,8 @@
                             '<h2 style="color:#000;">📋 Mesas abertas: ' + abertasLista.length + ' | ' + brl(totalAbertas) + '</h2>' +
                             '<button onclick="encerrarTodas()" style="background:#f87171; border:2px solid #000;"' + (abertasLista.length === 0 ? ' disabled' : '') + '>🔒 Encerrar todas (senha)</button>' +
                         '</div>' +
-                        (abHtml ? '<div class="mesas-grid">' + abHtml + '</div>' : '<p style="color:#000; font-weight:bold; padding:2rem; text-align:center;">Nenhuma mesa em aberto.</p>') +
-                        (vipAbHtml ? '<h2 style="color:#000; margin: 1.5rem 0 0.5rem;">⭐ VIP em aberto: ' + vipLista.length + '</h2><p style="color:#000; font-size:0.875rem; font-weight:normal; margin-bottom:0.25rem;">Total: ' + brl(totalVipAb) + '</p><p style="color:#000; font-size:0.8rem; margin-bottom:0.75rem;">Contas mensais: não entram no "Encerrar todas" nem no fechamento do dia.</p><div class="mesas-grid">' + vipAbHtml + '</div>' : '') +
+                        (abHtml ? '<div class="grid-cartoes">' + abHtml + '</div>' : '<p style="color:#000; font-weight:bold; padding:2rem; text-align:center;">Nenhuma mesa em aberto.</p>') +
+                        (vipAbHtml ? '<h2 style="color:#000; margin: 1.5rem 0 0.5rem;">⭐ VIP em aberto: ' + vipLista.length + '</h2><p style="color:#000; font-size:0.875rem; font-weight:normal; margin-bottom:0.25rem;">Total: ' + brl(totalVipAb) + '</p><p style="color:#000; font-size:0.8rem; margin-bottom:0.75rem;">Contas mensais: não entram no "Encerrar todas" nem no fechamento do dia.</p><div class="grid-cartoes">' + vipAbHtml + '</div>' : '') +
                     '</div>' + lateralAb + '</div>';
                 } else if (estado.abaAtiva === 'finalizadas') {
                     var finHtml = '', totalFin = 0, porForma = {}, totalVipFin = 0;
