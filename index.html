@@ -340,12 +340,12 @@
         function souTeste() { return !!(estado.usuario && estado.usuario.supreme); } // papel supreme (coluna C da aba Key)
         function etiquetaTeste() { return '<b style="background:#6d28d9; color:#fff; border-radius:0.3rem; padding:0 0.4rem; font-size:0.75rem; letter-spacing:0.05em;">TESTE</b>'; }
         function mesaTeste(m) { return !!(m && m.itens && m.itens.some(function(it) { return it.teste; })); }
-        // cores da lista de produtos: caixa = verde suave, bar = azul suave, cozinha = vermelho suave (+ bolinha no texto, p/ iPad que ignora a cor)
+        // cores da lista de produtos: caixa = verde suave, bar = azul suave, cozinha = vermelho suave (+ coração no texto, p/ iPad que ignora a cor)
         function estiloTipo(tipo) {
             var t = String(tipo || 'bar').toLowerCase();
             if (t.indexOf('caixa') >= 0) return { bg: '#dcfce7', ico: '💚 ' };
-            if (t.indexOf('cozinha') >= 0 || t.indexOf('petisco') >= 0 || t.indexOf('comida') >= 0) return { bg: '#fee2e2', ico: '🔴 ' };
-            return { bg: '#dbeafe', ico: '🔵 ' };
+            if (t.indexOf('cozinha') >= 0 || t.indexOf('petisco') >= 0 || t.indexOf('comida') >= 0) return { bg: '#fee2e2', ico: '❤️ ' };
+            return { bg: '#dbeafe', ico: '💙 ' };
         }
         function itemEhCaixa(it) { return String(it.tipo || '').toLowerCase().indexOf('caixa') >= 0; }
         function itemEhCozinha(it) {
