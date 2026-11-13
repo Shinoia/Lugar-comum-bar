@@ -843,6 +843,39 @@
             var v = estado.vr; if (!v || v.enviando || !v.confirmando) return;
             var imprimir = v.confirmando.imprimir;
             var vnome = limparNome(v.nome), vtel = String(v.tel || '').replace(/\D/g, '');
+            var d = new Date(), z = function(n) { return (n < 10 ? '0' : '') + n; };
+            var chave = PREFIXO_PESSOA + 'Comanda ' + rotuloNumero('VR') + ' - VR - ' + vnome + (vtel ? ' - ' + vtel : '') + ' - ' + z(d.getHours()) + ':' + z(d.getMinutes());
+            if (!estado.vrOcultas) estado.vrOcultas = {};
+            var vteste = souTeste();
+            var itens = v.itens.slice(), forma = vteste ? 'Teste' : v.forma, total = vrTotal();
+            var vni = v.ni, vcompleto = v.completo;
+            v.enviando = true; vrDesenhar();
+            estado.vrOcultas[chave] = Date.now();   // não aparece em Pessoas/Abertas enquanto fecha
+            var url = API_URL + '?acao=venda_rapida&mesa=' + encodeURIComponent(chave) + '&forma=' + encodeURIComponent(forma) +
+                '&itens=' + encodeURIComponent(JSON.stringify(itens.map(function(i) { return { produto: i.produto, qnt: i.qnt, obs: i.obs || '' }; }))) +
+                (vteste ? '&teste=1' : '') + (vtel ? '&tel=' + encodeURIComponent(vtel) : (vni ? '&tel=ni' : '')) + (vnome ? '&nome=' + encodeURIComponent(vnome) : '');
+            // imprime e fecha a janela na hora; a planilha é atualizada em segundo plano (uma única chamada)
+            var antigo = false;
+            fetch(url).then(function(res) { return res.json(); }).then(function(r) {
+                if (r && r.result === 'success') { sincronizar(); return; }
+                if (r && !r.error) { antigo = true; throw new Error('script-antigo'); }
+                throw new Error((r && r.error) || 'falha');
+            }).catch(function(e) {
+                delete estado.vrOcultas[chave];
+                alert('A venda rápida não foi concluída na planilha: ' + (e && e.message ? e.message : e) + '\nConfira em Pessoas/Abertas antes de lançar de novo.' + (antigo ? '\n(O Código do Apps Script está desatualizado: publique a nova versão.)' : ''));
+                sincronizar();
+            });
+            if (imprimir) {
+                    imprimirHtml(htmlRecibo({ teste: vteste, mesa: chave, tchau: agoraBR(), abertura: agoraBR(), itens: itens.map(function(i) { return { produto: i.produto, qnt: i.qnt, preco: i.preco, obs: i.obs || '', pedidoEm: '' }; }), total: total, forma: forma }, 'FINAL'), 'Venda rápida');
+            }
+            vrFechar();
+            sincronizar();
+        }
+
+        function vrEnviarLento() {
+            var v = estado.vr; if (!v || v.enviando || !v.confirmando) return;
+            var imprimir = v.confirmando.imprimir;
+            var vnome = limparNome(v.nome), vtel = String(v.tel || '').replace(/\D/g, '');
             v.enviando = true; vrDesenhar();
             var d = new Date(), z = function(n) { return (n < 10 ? '0' : '') + n; };
             var chave = PREFIXO_PESSOA + 'Comanda ' + rotuloNumero('VR') + ' - VR - ' + vnome + (vtel ? ' - ' + vtel : '') + ' - ' + z(d.getHours()) + ':' + z(d.getMinutes());
