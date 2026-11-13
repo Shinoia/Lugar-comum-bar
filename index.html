@@ -251,16 +251,20 @@
         }
         // "Comanda 003 - Fernando - 11999998888" -> {num:'003', nome:'Fernando', tel:'11999998888'}
         function partesPessoa(n) {
-            var m = /^Comanda (\d+) - (.*)$/.exec(String(n));
+            var m = /^Comanda (T?\d+) - (.*)$/.exec(String(n));
             if (!m) return { num: '', nome: String(n), tel: '' };
             var resto = m[2], t = /^(.*) - (\d{8,})$/.exec(resto);
             return t ? { num: m[1], nome: t[1], tel: t[2] } : { num: m[1], nome: resto, tel: '' };
         }
         // campo de telefone (opcional) antes do 1º pedido: 'pessoa' (grava na chave), 'mesa' (grava na aba Telefones) ou ''
         // nome (só mesas): sugere clientes da aba Clientes e, se o cliente tem telefone lá, preenche o campo
+        // clientes com o MESMO nome completo (ex.: 4 "Fernando"): a lista mostra o final do telefone para diferenciar
+        function sufixoTel(c) { return c.tel ? ' <small style="color:#555;">· final ' + esc(String(c.tel).slice(-4)) + '</small>' : ''; }
         function achaCliente(nome) {
             var q = semAcento(limparNome(nome));
-            return q ? estado.clientes.find(function(c) { return semAcento(c.nome) === q; }) : null;
+            if (!q) return null;
+            var iguais = estado.clientes.filter(function(c) { return semAcento(c.nome) === q; });
+            return iguais.length === 1 ? iguais[0] : null; // só preenche sozinho se houver um único cliente com esse nome
         }
         function preencherTelDoCliente(c) {
             var t = document.getElementById('input-tel-pessoa'), ni = document.getElementById('tel-ni');
@@ -274,17 +278,17 @@
             if (!box) return;
             var lista = limparNome(txt) ? filtrarClientes(txt) : [];
             box.innerHTML = lista.length ? '<div style="border:2px solid #000; border-radius:0.5rem; overflow:hidden; margin-top:0.25rem;">' + lista.map(function(c) {
-                return '<button type="button" data-nome="' + esc(c.nome) + '" onclick="escolherNomeMesa(this.getAttribute(\'data-nome\'))" style="display:block; width:100%; text-align:left; background:#fff; border:0; border-bottom:1px solid #ccc; padding:0.5rem; color:#000;">' + esc(c.nome) + (c.tel ? ' <small>📞</small>' : '') + '</button>';
+                return '<button type="button" data-nome="' + esc(c.nome) + '" data-tel="' + esc(c.tel || '') + '" onclick="escolherNomeMesa(this.getAttribute(\'data-nome\'), this.getAttribute(\'data-tel\'))" style="display:block; width:100%; text-align:left; background:#fff; border:0; border-bottom:1px solid #ccc; padding:0.5rem; color:#000;">' + esc(c.nome) + (c.tel ? sufixoTel(c) + ' 📞' : '') + '</button>';
             }).join('') + '</div>' : '';
             var ex = achaCliente(txt);
             if (ex && ex.tel && !String(estado.telCache || '').trim()) preencherTelDoCliente(ex);
         }
-        function escolherNomeMesa(nome) {
+        function escolherNomeMesa(nome, tel) {
             var inp = document.getElementById('input-nome-mesa');
             if (inp) inp.value = nome;
             estado.nomeMesaCache = nome;
             var box = document.getElementById('sug-mesa'); if (box) box.innerHTML = '';
-            preencherTelDoCliente(achaCliente(nome));
+            if (tel) preencherTelDoCliente({ tel: tel }); else preencherTelDoCliente(achaCliente(nome));
         }
         function telNaoInformado(on) {
             estado.telNI = !!on;
@@ -348,7 +352,7 @@
             if (!p) return 0;
             var reservado = 0;
             estado.pendentes.forEach(function(pd) {
-                if (pd.pedido.produto === nome) reservado += Number(pd.pedido.qnt) || 0;
+                if (pd.pedido.produto === nome && !pd.pedido.teste) reservado += Number(pd.pedido.qnt) || 0; // teste não reserva estoque
             });
             return (Number(p.estoque) || 0) - reservado;
         }
@@ -411,8 +415,10 @@
                     if (mesaObj) {
                         if (p.status === 'fechado') {
                             fechSets[baseId] = fechSets[baseId] || {};
-                            fechSets[baseId][String(p.tchau)] = true;
-                            contagemFechamentos[baseId] = Object.keys(fechSets[baseId]).length;
+                            if (!p.teste) { // fechamento de teste não muda o número da mesa
+                                fechSets[baseId][String(p.tchau)] = true;
+                                contagemFechamentos[baseId] = Object.keys(fechSets[baseId]).length;
+                            }
                             mesaObj.status = 'livre';
                         } else {
                             mesaObj.status = 'ocupada';
@@ -603,7 +609,7 @@
             var lista = filtrarClientes(txt);
             if (!lista.length) return '<div style="font-size:0.8rem; color:#555;">Nenhum cliente com esse nome. Toque em Adicionar para criar.</div>';
             return '<div style="border:2px solid #000; border-radius:0.5rem; overflow:hidden;">' + lista.map(function(c, i) {
-                return '<button type="button" data-nome="' + esc(c.nome) + '" onclick="escolherPessoa(this.getAttribute(\'data-nome\'))" style="display:block; width:100%; text-align:left; background:#fff; border:0; ' + (i ? 'border-top:1px solid #ccc; ' : '') + 'padding:0.5rem 0.75rem; border-radius:0; font-size:1rem; color:#000;">' + esc(c.nome) + (c.n ? ' <small style="color:#666;">(' + c.n + 'x)</small>' : '') + '</button>';
+                return '<button type="button" data-nome="' + esc(c.nome) + '" data-tel="' + esc(c.tel || '') + '" onclick="escolherPessoa(this.getAttribute(\'data-nome\'), this.getAttribute(\'data-tel\'))" style="display:block; width:100%; text-align:left; background:#fff; border:0; ' + (i ? 'border-top:1px solid #ccc; ' : '') + 'padding:0.5rem 0.75rem; border-radius:0; font-size:1rem; color:#000;">' + esc(c.nome) + sufixoTel(c) + (c.n ? ' <small style="color:#666;">(' + c.n + 'x)</small>' : '') + '</button>';
             }).join('') + '</div>';
         }
         function sugerirPessoas(txt) {
@@ -622,6 +628,19 @@
                 if (tipo === 'VR' ? !!m[2] : !m[2]) max = Math.max(max, parseInt(m[1], 10));
             });
             return max + 1;
+        }
+        // número da comanda: normal = 001, 002...; Queen (teste) tem a própria contagem T001, T002... e não consome os números reais
+        function rotuloNumero(tipo) {
+            if (!souTeste()) return fmtNum(proximoNumero(tipo));
+            var max = 0, ids = estado.pessoasNovas.slice();
+            (estado.pessoas || []).forEach(function(p) { ids.push(p.id); });
+            (estado.pedidosGlobais || []).forEach(function(p) { if (p && p.mesa) ids.push(String(p.mesa)); });
+            Object.keys(estado.vrOcultas || {}).forEach(function(k) { ids.push(k); });
+            ids.forEach(function(id) {
+                var m = /^Pessoa: Comanda T(\d+) - (VR - )?/.exec(String(id));
+                if (m && (tipo === 'VR' ? !!m[2] : !m[2])) max = Math.max(max, parseInt(m[1], 10));
+            });
+            return 'T' + fmtNum(max + 1);
         }
         function fmtNum(n) { return (n < 10 ? '00' : n < 100 ? '0' : '') + n; }
         function novaPessoa() {
@@ -686,7 +705,7 @@
             }).join('');
             el.innerHTML = '<div style="background:#b91c1c; border:3px solid #000; border-radius:0.75rem; padding:1rem; width:100%; max-width:30rem; margin:0 auto; color:#000;">' +
                 '<div style="display:flex; justify-content:space-between; align-items:center;"><h3>🛒 Venda rápida</h3><button type="button" onclick="vrFechar()" style="background:#fff; border:2px solid #000;"' + (v.enviando ? ' disabled' : '') + '>Cancelar</button></div>' +
-                '<div style="background:#facc15; border:2px solid #000; border-radius:0.5rem; text-align:center; font-weight:800; padding:0.6rem; margin:0.6rem 0;">Comanda ' + fmtNum(proximoNumero('VR')) + ' - VR &nbsp;|&nbsp; Total: ' + brl(vrTotal()) + '</div>' +
+                '<div style="background:#facc15; border:2px solid #000; border-radius:0.5rem; text-align:center; font-weight:800; padding:0.6rem; margin:0.6rem 0;">Comanda ' + rotuloNumero('VR') + ' - VR &nbsp;|&nbsp; Total: ' + brl(vrTotal()) + '</div>' +
                 '<div style="background:#ef4444; border-radius:0.5rem; padding:0.75rem; margin-bottom:0.6rem;"><label style="font-size:0.75rem;">Nome *</label><input type="text" id="vr-nome" maxlength="40" value="' + esc(v.nome || '') + '" style="width:100%; margin:0.2rem 0 0.4rem;">' +
                     '<label style="font-size:0.75rem;">Telefone (opcional, com DDD)</label><input type="tel" id="vr-tel" inputmode="numeric" maxlength="16" value="' + esc(v.ni ? '' : (v.tel || '')) + '"' + (v.ni ? ' disabled' : '') + ' style="width:100%; margin:0.2rem 0;"><label style="display:block; font-size:0.85rem;"><input type="checkbox" id="vr-ni" onchange="vrNI(this.checked)"' + (v.ni ? ' checked' : '') + '> Não informado</label></div>' +
                 '<div style="background:#ef4444; border-radius:0.5rem; padding:0.75rem; margin-bottom:0.6rem;">' +
@@ -758,7 +777,7 @@
             vrForm();
             if (!v.itens.length) { vrErro('Adicione pelo menos um produto para imprimir.'); return; }
             var itens = v.itens.map(function(i) { return { produto: i.produto, qnt: i.qnt, preco: i.preco, obs: i.obs || '', pedidoEm: '' }; });
-            imprimirHtml(htmlRecibo({ mesa: 'Comanda ' + fmtNum(proximoNumero('VR')) + ' - VR - ' + limparNome(v.nome), tchau: agoraBR(), abertura: agoraBR(), itens: itens, total: vrTotal(), forma: v.forma || 'A definir' }, 'FINAL'), 'Venda rápida');
+            imprimirHtml(htmlRecibo({ mesa: 'Comanda ' + rotuloNumero('VR') + ' - VR - ' + limparNome(v.nome), tchau: agoraBR(), abertura: agoraBR(), itens: itens, total: vrTotal(), forma: v.forma || 'A definir' }, 'FINAL'), 'Venda rápida');
         }
         function vrVoltar() { var v = estado.vr; if (!v || v.enviando) return; v.confirmando = null; vrDesenhar(); }
         function vrEnviar() {
@@ -767,7 +786,7 @@
             var vnome = limparNome(v.nome), vtel = String(v.tel || '').replace(/\D/g, '');
             v.enviando = true; vrDesenhar();
             var d = new Date(), z = function(n) { return (n < 10 ? '0' : '') + n; };
-            var chave = PREFIXO_PESSOA + 'Comanda ' + fmtNum(proximoNumero('VR')) + ' - VR - ' + vnome + (vtel ? ' - ' + vtel : '') + ' - ' + z(d.getHours()) + ':' + z(d.getMinutes());
+            var chave = PREFIXO_PESSOA + 'Comanda ' + rotuloNumero('VR') + ' - VR - ' + vnome + (vtel ? ' - ' + vtel : '') + ' - ' + z(d.getHours()) + ':' + z(d.getMinutes());
             if (!estado.vrOcultas) estado.vrOcultas = {};
             estado.vrOcultas[chave] = Date.now();   // não aparece em Pessoas/Abertas enquanto fecha
             var vteste = souTeste(), vdescartar = vteste && !v.completo;
@@ -804,11 +823,13 @@
             var el = document.getElementById('janela-pessoa');
             if (el && el.parentNode) el.parentNode.removeChild(el);
         }
-        function escolherPessoa(valor) {
+        function escolherPessoa(valor, tel) {
             var entrada = limparNome(valor);
             if (!entrada) return;
             fecharJanelaPessoa();
             criarPessoa(entrada);
+            // cliente salvo com telefone na aba Clientes: já vem preenchido no campo de telefone da comanda
+            if (tel && tipoCampoTelefone(acharMesa(estado.mesaSelecionadaId)) === 'pessoa') { estado.telCache = String(tel); estado.telNI = false; renderizar(); }
         }
         function criarPessoa(entrada) {
             var chave;
@@ -821,7 +842,7 @@
             } else if (up.indexOf('VIP-') === 0 && up.length > 4) {
                 chave = up;
             } else {
-                chave = PREFIXO_PESSOA + 'Comanda ' + fmtNum(proximoNumero('')) + ' - ' + entrada;
+                chave = PREFIXO_PESSOA + 'Comanda ' + rotuloNumero('') + ' - ' + entrada;
             }
             var chaveMin = chave.toLowerCase();
             var existe = estado.pessoasNovas.some(function(n) { return n.toLowerCase() === chaveMin; }) ||
