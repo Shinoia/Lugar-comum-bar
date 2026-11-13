@@ -691,6 +691,34 @@
             if (n1) v.nome = n1.value; if (t1) v.tel = t1.value;
             var r1 = document.getElementById('vr-recebido'); if (r1) v.recebido = r1.value;
         }
+        function vrNome(txt) {
+            var v = estado.vr; if (!v) return;
+            v.nome = txt;
+            var box = document.getElementById('vr-sug');
+            if (box) {
+                var lista = limparNome(txt) ? filtrarClientes(txt) : [];
+                box.innerHTML = lista.length ? '<div style="border:2px solid #000; border-radius:0.5rem; overflow:hidden; margin-bottom:0.4rem; background:#fff;">' + lista.map(function(c) {
+                    return '<button type="button" data-nome="' + esc(c.nome) + '" data-tel="' + esc(c.tel || '') + '" onclick="vrEscolherNome(this.getAttribute(\'data-nome\'), this.getAttribute(\'data-tel\'))" style="display:block; width:100%; text-align:left; background:#fff; border:0; border-bottom:1px solid #ccc; padding:0.5rem; color:#000;">' + esc(c.nome) + (c.tel ? ' 📞' : '') + '</button>';
+                }).join('') + '</div>' : '';
+            }
+            var ex = achaCliente(txt);
+            if (ex && ex.tel && !String(v.tel || '').trim()) vrPreencherTel(ex.tel);
+        }
+        function vrPreencherTel(tel) {
+            var v = estado.vr; if (!v) return;
+            var t = document.getElementById('vr-tel'), ni = document.getElementById('vr-ni');
+            v.ni = false; if (ni) ni.checked = false;
+            v.tel = tel; if (t) { t.disabled = false; t.value = tel; }
+        }
+        function vrEscolherNome(nome, tel) {
+            var v = estado.vr; if (!v) return;
+            v.nome = nome;
+            var n = document.getElementById('vr-nome'); if (n) n.value = nome;
+            var box = document.getElementById('vr-sug'); if (box) box.innerHTML = '';
+            var c = achaCliente(nome);
+            tel = tel || (c && c.tel) || '';
+            if (tel) vrPreencherTel(tel);
+        }
         function vrTotal() { return (estado.vr ? estado.vr.itens : []).reduce(function(t, i) { return t + i.qnt * i.preco; }, 0); }
         function vendaRapida() {
             estado.vr = { itens: [], forma: '', sel: '', qtd: 1, obs: '', nome: '', tel: '', recebido: '', ni: false, completo: false, confirmando: null, enviando: false };
@@ -725,7 +753,7 @@
             el.innerHTML = '<div style="background:#b91c1c; border:3px solid #000; border-radius:0.75rem; padding:1rem; width:100%; max-width:30rem; margin:0 auto; color:#000;">' +
                 '<div style="display:flex; justify-content:space-between; align-items:center;"><h3>🛒 Venda rápida</h3><button type="button" onclick="vrFechar()" style="background:#fff; border:2px solid #000;"' + (v.enviando ? ' disabled' : '') + '>Cancelar</button></div>' +
                 '<div style="background:#facc15; border:2px solid #000; border-radius:0.5rem; text-align:center; font-weight:800; padding:0.6rem; margin:0.6rem 0;">Comanda ' + rotuloNumero('VR') + ' - VR &nbsp;|&nbsp; Total: ' + brl(vrTotal()) + '</div>' +
-                '<div style="background:#ef4444; border-radius:0.5rem; padding:0.75rem; margin-bottom:0.6rem;"><label style="font-size:0.75rem;">Nome *</label><input type="text" id="vr-nome" maxlength="40" value="' + esc(v.nome || '') + '" style="width:100%; margin:0.2rem 0 0.4rem;">' +
+                '<div style="background:#ef4444; border-radius:0.5rem; padding:0.75rem; margin-bottom:0.6rem;"><label style="font-size:0.75rem;">Nome *</label><input type="text" id="vr-nome" maxlength="40" autocomplete="off" oninput="vrNome(this.value)" value="' + esc(v.nome || '') + '" style="width:100%; margin:0.2rem 0 0.4rem;"><div id="vr-sug"></div>' +
                     '<label style="font-size:0.75rem;">Telefone (opcional, com DDD)</label><input type="tel" id="vr-tel" inputmode="numeric" maxlength="16" value="' + esc(v.ni ? '' : (v.tel || '')) + '"' + (v.ni ? ' disabled' : '') + ' style="width:100%; margin:0.2rem 0;"><label style="display:block; font-size:0.85rem;"><input type="checkbox" style="width:auto; display:inline-block; margin-right:0.4rem;" id="vr-ni" onchange="vrNI(this.checked)"' + (v.ni ? ' checked' : '') + '> Não informado</label></div>' +
                 '<div style="background:#ef4444; border-radius:0.5rem; padding:0.75rem; margin-bottom:0.6rem;">' +
                     '<label style="font-size:0.75rem;">SELECIONAR PRODUTO</label><select id="vr-produto" style="width:100%; margin:0.2rem 0 0.4rem;">' + opc + '</select>' +
@@ -851,14 +879,45 @@
             // cliente salvo com telefone na aba Clientes: já vem preenchido no campo de telefone da comanda
             if (tel && tipoCampoTelefone(acharMesa(estado.mesaSelecionadaId)) === 'pessoa') { preencherTelDoCliente({ tel: String(tel) }); } // escreve direto no campo (renderizar() apagaria: ele relê o campo vazio)
         }
+        // janela do cliente VIP: busca o nome na lista de clientes da planilha
+        function janelaVip() {
+            var old = document.getElementById('janela-vip'); if (old) old.parentNode.removeChild(old);
+            var el = document.createElement('div');
+            el.id = 'janela-vip';
+            el.style.cssText = 'position:fixed; top:0; left:0; right:0; bottom:0; width:100%; height:100%; background:rgba(0,0,0,0.5); display:flex; align-items:center; justify-content:center; z-index:60; padding:1rem;';
+            el.innerHTML = '<div style="background:#fff; border:3px solid #000; border-radius:0.75rem; padding:1rem; width:100%; max-width:26rem; color:#000;">' +
+                '<h3 style="margin-bottom:0.75rem;">⭐ Cliente VIP</h3>' +
+                '<label style="font-size:0.8rem;">Nome do cliente VIP (digite para ver os clientes salvos):</label>' +
+                '<input type="text" id="input-vip" maxlength="40" autocomplete="off" style="width:100%; margin:0.25rem 0 0.5rem;" oninput="vipSugerir(this.value)" onkeydown="if(event.key===\'Enter\') vipEscolher(this.value)">' +
+                '<div id="sug-vip" style="margin-bottom:0.75rem; max-height:40vh; overflow:auto;"></div>' +
+                '<div style="display:flex; gap:0.5rem; justify-content:flex-end;">' +
+                    '<button type="button" onclick="vipFechar()" style="background:#fff; border:2px solid #000;">Cancelar</button>' +
+                    '<button type="button" onclick="vipEscolher(document.getElementById(\'input-vip\').value)" style="background:#facc15; border:2px solid #000;">Adicionar</button>' +
+                '</div></div>';
+            document.body.appendChild(el);
+            var inp = document.getElementById('input-vip'); if (inp && inp.focus) inp.focus();
+        }
+        function vipFechar() { var el = document.getElementById('janela-vip'); if (el && el.parentNode) el.parentNode.removeChild(el); }
+        function vipSugerir(txt) {
+            var box = document.getElementById('sug-vip'); if (!box) return;
+            var lista = limparNome(txt) ? filtrarClientes(txt) : [];
+            box.innerHTML = lista.length ? '<div style="border:2px solid #000; border-radius:0.5rem; overflow:hidden;">' + lista.map(function(c) {
+                return '<button type="button" data-nome="' + esc(c.nome) + '" onclick="vipEscolher(this.getAttribute(\'data-nome\'))" style="display:block; width:100%; text-align:left; background:#fff; border:0; border-bottom:1px solid #ccc; padding:0.5rem; color:#000;">' + esc(c.nome) + '</button>';
+            }).join('') + '</div>' : '';
+        }
+        function vipEscolher(nome) {
+            var n = limparNome(nome).toUpperCase();
+            if (!n) return;
+            vipFechar();
+            criarPessoa('VIP-' + n);
+        }
         function criarPessoa(entrada) {
             var chave;
             var up = entrada.toUpperCase();
             if (up === 'VIP') {
                 // cliente VIP (mensalista): pede o nome e grava como VIP-NOME
-                var nomeVip = limparNome(prompt('Nome do cliente VIP:')).toUpperCase();
-                if (!nomeVip) return;
-                chave = 'VIP-' + nomeVip;
+                janelaVip();
+                return;
             } else if (up.indexOf('VIP-') === 0 && up.length > 4) {
                 chave = up;
             } else {
