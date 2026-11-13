@@ -560,19 +560,15 @@
             fecharJanelaPessoa();
             var el = document.createElement('div');
             el.id = 'janela-pessoa';
-            el.style.cssText = 'position:fixed; top:0; left:0; right:0; bottom:0; width:100%; height:100%; background:rgba(0,0,0,0.5); display:flex; align-items:center; justify-content:center; z-index:50; padding:1rem; overflow:auto;';
-            el.innerHTML = '<div style="background:#fff; border:3px solid #000; border-radius:0.75rem; padding:1rem; width:100%; max-width:26rem; color:#000; max-height:100%; overflow:auto;">' +
+            el.style.cssText = 'position:fixed; top:0; left:0; right:0; bottom:0; width:100%; height:100%; background:rgba(0,0,0,0.5); display:flex; align-items:center; justify-content:center; z-index:50; padding:1rem;';
+            el.innerHTML = '<div style="background:#fff; border:3px solid #000; border-radius:0.75rem; padding:1rem; width:100%; max-width:26rem; color:#000;">' +
                 '<h3 style="margin-bottom:0.75rem;">+ Nova Pessoa</h3>' +
-                '<div style="background:#facc15; border:2px solid #000; border-radius:0.5rem; text-align:center; font-weight:800; padding:0.4rem; margin-bottom:0.6rem;">Comanda ' + fmtNum(proximoNumero('')) + '</div>' +
-                '<label style="font-size:0.8rem;">Nome da pessoa * (comece a digitar para ver os clientes salvos)</label>' +
-                '<input type="text" id="input-nova-pessoa" maxlength="40" autocomplete="off" placeholder="Nome" style="width:100%; margin:0.25rem 0 0.4rem;" oninput="sugerirPessoas(this.value)">' +
-                '<div id="sugestoes-pessoa" style="margin-bottom:0.6rem; max-height:30vh; overflow:auto;">' + htmlSugestoes('') + '</div>' +
-                '<label style="font-size:0.8rem;">Telefone * (com DDD)</label>' +
-                '<input type="tel" id="input-telefone" inputmode="numeric" maxlength="16" autocomplete="off" placeholder="Ex.: 11999998888" style="width:100%; margin:0.25rem 0 0.4rem;" onkeydown="if(event.key===\'Enter\') confirmarNovaPessoa()">' +
-                '<div id="erro-pessoa" style="color:#b91c1c; font-size:0.85rem; min-height:1.1rem; margin-bottom:0.4rem;"></div>' +
+                '<label style="font-size:0.8rem;">Nome (comece a digitar para ver os clientes salvos; VIP = mensalista):</label>' +
+                '<input type="text" id="input-nova-pessoa" maxlength="40" autocomplete="off" style="width:100%; margin:0.25rem 0 0.5rem;" oninput="sugerirPessoas(this.value)" onkeydown="if(event.key===\'Enter\') escolherPessoa(this.value)">' +
+                '<div id="sugestoes-pessoa" style="margin-bottom:0.75rem; max-height:40vh; overflow:auto;">' + htmlSugestoes('') + '</div>' +
                 '<div style="display:flex; gap:0.5rem; justify-content:flex-end;">' +
                     '<button type="button" onclick="fecharJanelaPessoa()" style="background:#fff; border:2px solid #000;">Cancelar</button>' +
-                    '<button type="button" onclick="confirmarNovaPessoa()" style="background:#facc15; border:2px solid #000;">Adicionar</button>' +
+                    '<button type="button" onclick="escolherPessoa(document.getElementById(\'input-nova-pessoa\').value)" style="background:#facc15; border:2px solid #000;">Adicionar</button>' +
                 '</div></div>';
             document.body.appendChild(el);
             var inp = document.getElementById('input-nova-pessoa');
@@ -735,27 +731,11 @@
             var el = document.getElementById('janela-pessoa');
             if (el && el.parentNode) el.parentNode.removeChild(el);
         }
-        // tocar num nome da lista só preenche o campo Nome
         function escolherPessoa(valor) {
-            var campo = document.getElementById('input-nova-pessoa');
-            if (!campo) return;
-            campo.value = limparNome(valor);
-            var sug = document.getElementById('sugestoes-pessoa');
-            if (sug) sug.innerHTML = '';
-            var tel = document.getElementById('input-telefone');
-            if (tel && tel.focus) tel.focus();
-        }
-        function confirmarNovaPessoa() {
-            var erro = document.getElementById('erro-pessoa');
-            function falha(t, id) { if (erro) erro.textContent = t; var c = document.getElementById(id); if (c && c.focus) c.focus(); }
-            var nome = limparNome((document.getElementById('input-nova-pessoa') || {}).value);
-            var tel = String((document.getElementById('input-telefone') || {}).value || '').replace(/\D/g, '');
-            var up = nome.toUpperCase();
-            if (up === 'VIP' || (up.indexOf('VIP-') === 0 && up.length > 4)) { fecharJanelaPessoa(); criarPessoa(nome); return; } // mensalista: segue como antes
-            if (nome.length < 2) return falha('Informe o nome da pessoa.', 'input-nova-pessoa');
-            if (tel.length < 8) return falha('Informe o telefone com DDD (mínimo 8 números).', 'input-telefone');
+            var entrada = limparNome(valor);
+            if (!entrada) return;
             fecharJanelaPessoa();
-            criarPessoa('Comanda ' + fmtNum(proximoNumero('')) + ' - ' + nome + ' - ' + tel);
+            criarPessoa(entrada);
         }
         function criarPessoa(entrada) {
             var chave;
