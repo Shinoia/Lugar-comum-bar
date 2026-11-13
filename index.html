@@ -1343,22 +1343,28 @@
         }
         function abrirNaCaixa(id) { mudarAba('caixa'); selecionarMesa(id); }
 
+        // clicar em qualquer parte do cartão (menos nos botões/campos) abre a comanda completa no painel da direita
+        function cliqueCartao(ev, el) {
+            var t = ev.target;
+            while (t && t !== el) {
+                var tg = String(t.tagName || '').toLowerCase();
+                if (tg === 'button' || tg === 'select' || tg === 'input' || tg === 'option' || tg === 'label') return;
+                t = t.parentNode;
+            }
+            selecionarMesa(el.getAttribute('data-id'));
+        }
         function htmlCartaoAberto(ma) {
             var linhasAb = '';
                         for (var li = 0; li < ma.itens.length; li++) {
                             var ia = ma.itens[li];
                             linhasAb += '<div style="display:flex; justify-content:space-between; gap:0.5rem; font-size:0.85rem;"><span>' + ia.qnt + 'x ' + esc(ia.produto) + (ia.obs ? ' <small>(📝 ' + esc(ia.obs) + ')</small>' : '') + '</span>' +
                                 '<span class="badge" style="background:' + corStatus(ia.statusPreparo || 'pendente') + ';">' + String(ia.statusPreparo || 'pendente').toUpperCase() + '</span>' +
-                                '<span style="white-space:nowrap;">' + (ia.qnt > 1 ? '<button type="button" onclick="cancelarItem(' + ia.idItem + ', 1)" title="Remover 1 unidade" style="padding:0 0.4rem; background:#fff; border:2px solid #000; margin-left:0.25rem;">−1</button>' : '') +
-                                '<button type="button" onclick="cancelarItem(' + ia.idItem + ', ' + ia.qnt + ')" title="Cancelar este item" style="padding:0 0.4rem; background:#fff; border:2px solid #000; margin-left:0.25rem;">✖</button></span></div>';
+                                '</div>';
                         }
                         var cartaoAb = '<div class="mesa-card ocupada' + (mesaTeste(ma) ? ' teste' : '') + (String(ma.id) === String(estado.mesaSelecionadaId) ? ' selecionada' : '') + ' cartao-aberto">' +
                             '<div style="display:flex; justify-content:space-between;"><div><strong>' + iconeCartao(ma) + esc(tituloCartao(ma)) + '</strong>' + clienteDaMesaAberta(ma) + '</div>' + (mesaTeste(ma) ? etiquetaTeste() : '') + (ma.vip ? '<span style="font-size:0.875rem; font-weight:normal;">' + brl(totalMesaObj(ma)) + '</span>' : '<strong>' + brl(totalMesaObj(ma)) + '</strong>') + '</div>' +
                             (ma.abertaEm ? '<small>Aberta em ' + esc(ma.abertaEm) + '</small>' : '') +
                             '<div style="display:flex; flex-direction:column; gap:0.25rem;">' + linhasAb + '</div>' +
-                            (ma.itens.length > 0 ? '<div style="display:flex; gap:0.3rem;"><select class="rap-campo" data-id="' + esc(ma.id) + '" onchange="rapidoSet(this.getAttribute(\'data-id\'), \'p\', this.value)" style="flex:1; min-width:0;">' + opcoesRapido(((estado.rapido || {})[ma.id] || {}).p || '') + '</select>' +
-                                '<input class="rap-campo" type="number" min="1" data-id="' + esc(ma.id) + '" value="' + esc(String(((estado.rapido || {})[ma.id] || {}).q || 1)) + '" onchange="rapidoSet(this.getAttribute(\'data-id\'), \'q\', this.value)" style="width:3.5rem; text-align:center;">' +
-                                '<button type="button" data-id="' + esc(ma.id) + '" onclick="adicionarRapido(this.getAttribute(\'data-id\'))" style="background:#facc15; border:2px solid #000;">+ Lançar</button></div>' : '') +
                             '<div style="display:flex; gap:0.4rem; flex-wrap:wrap;"><button data-id="' + esc(ma.id) + '" onclick="selecionarMesa(this.getAttribute(\'data-id\'))" style="background:#fff; border:2px solid #000; flex:1;">➕ Incluir produtos</button>' +
                             (ma.itens.length ? '<button data-id="' + esc(ma.id) + '" onclick="fecharMesa(this.getAttribute(\'data-id\'))" style="background:#f87171; border:2px solid #000; flex:1;">💳 Fechar comanda</button>' +
                             '<button data-id="' + esc(ma.id) + '" onclick="imprimirAberta(this.getAttribute(\'data-id\'))" title="Imprimir na térmica" style="background:#fff; border:2px solid #000;">🖨️</button>' : '') +
