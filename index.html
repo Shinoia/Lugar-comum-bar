@@ -928,6 +928,54 @@
                 var k; for (k = 0; k < 24; k++) h.sang.push({ x: h.x, y: h.y - BH * 0.8, vx: (Math.random() - 0.5) * p * 1.6, vy: -Math.random() * p * 1.6, v: 40 + Math.random() * 30 });
                 j.cabecas++;
             }
+            // depois do reinício: desenhos e a página inteira (menu, comandas...) caem para o fim da tela
+            function cairPagina() {
+                j.caiu = true; j.queda = [];
+                var cand = document.querySelectorAll('h1, h2, h3, button, .mesa-card, .painel-lateral, .kds-card, .sync-status, main p'), arr = [], q, r, n, o, k;
+                for (q = 0; q < cand.length; q++) {
+                    if (el.contains(cand[q])) continue;
+                    var dentro = false;
+                    for (n = 0; n < cand.length; n++) { if (n !== q && cand[n].contains(cand[q])) { dentro = true; break; } }
+                    if (dentro) continue;
+                    r = cand[q].getBoundingClientRect();
+                    if (r.width < 4 || r.height < 4 || r.bottom < 0 || r.top > H) continue;
+                    arr.push({ el: cand[q], t: r.top, b: r.bottom, l: r.left, r: r.right });
+                }
+                arr.sort(function(a, b2) { return b2.b - a.b; });   // os de baixo caem primeiro e formam a pilha
+                var pousados = [];
+                for (q = 0; q < arr.length; q++) {
+                    o = arr[q]; var chao = H - 2;
+                    for (k = 0; k < pousados.length; k++) {
+                        if (Math.min(o.r, pousados[k].r) - Math.max(o.l, pousados[k].l) > 4) chao = Math.min(chao, pousados[k].topo);
+                    }
+                    var dy = chao - o.b; if (dy < 0) dy = 0;
+                    pousados.push({ l: o.l, r: o.r, topo: o.t + dy });
+                    o.el.style.webkitTransformOrigin = o.el.style.transformOrigin = '50% 50%';
+                    j.queda.push({ el: o.el, y: 0, vy: 0, alvo: dy, rot: (Math.random() - 0.5) * 7, espera: Math.floor(Math.random() * 70), pronto: false });
+                }
+                // desenhos: caem juntos até o chão
+                var maxY = 0; for (q = 0; q < segs.length; q++) maxY = Math.max(maxY, segs[q].y1, segs[q].y2);
+                j.desAlvo = segs.length ? Math.max(0, (H - 4) - maxY) : 0; j.desY = 0; j.desVy = 0;
+            }
+            function passoQueda() {
+                var q, c, f;
+                for (q = 0; q < j.queda.length; q++) {
+                    c = j.queda[q]; if (c.pronto) continue;
+                    if (c.espera > 0) { c.espera--; continue; }
+                    c.vy += 0.9; c.y += c.vy;
+                    if (c.y >= c.alvo) { c.y = c.alvo; c.pronto = true; }
+                    f = c.alvo > 0 ? c.y / c.alvo : 1;
+                    c.el.style.webkitTransform = c.el.style.transform = 'translate3d(0,' + Math.round(c.y) + 'px,0) rotate(' + (c.rot * f).toFixed(2) + 'deg)';
+                }
+                if (j.desAlvo > 0 && j.desY < j.desAlvo) {
+                    j.desVy += 0.9; j.desY += j.desVy;
+                    if (j.desY >= j.desAlvo) {
+                        j.desY = j.desAlvo;
+                        for (q = 0; q < segs.length; q++) { segs[q].y1 += j.desY; segs[q].y2 += j.desY; }
+                        redesenharCamada(); j.desY = 0; j.desAlvo = 0;
+                    }
+                }
+            }
             function suave(t) { return t < 0 ? 0 : t > 1 ? 1 : t * t * (3 - 2 * t); }
             function animarFerramentas(h) {
                 var ft = j.ft++, vooFim = 70, k = suave(ft / vooFim), px = h.x, ny = h.y - BH * 0.85;
@@ -954,13 +1002,15 @@
                     if (h.crush && agora - j.tCrush >= 3000) { // 3 s depois do martelo caído: o jogo reinicia
                         j.h = novo(); j.fase = 0; j.ft = 0; j.tCorte = 0; j.quedaF = 0; j.tCrush = 0; j.toques = [];
                         if (ic) ic.style.visibility = 'visible';
+                        if (!j.caiu) cairPagina();
                     }
                 }
             }
             function passo() {
                 var h = j.h, k;
                 g.clearRect(0, 0, W, H);
-                if (segs.length) g.drawImage(lay, 0, 0);
+                if (j.queda) passoQueda();
+                if (segs.length) g.drawImage(lay, 0, j.desY || 0);
                 quadro++;
                 if (quadro % 20 === 0) lerObstaculos();
                 if (h.estado === 'vivo') mover(h);
@@ -1058,8 +1108,14 @@
             jogo.fim = true;
             try { if (window.cancelAnimationFrame) window.cancelAnimationFrame(jogo.raf); } catch (e) {}
             if (jogo.ic) jogo.ic.style.visibility = 'visible';
+            if (jogo.queda) { // a página volta ao normal
+                var fq = jogo.queda, w;
+                for (w = 0; w < fq.length; w++) { fq[w].el.style.webkitTransition = fq[w].el.style.transition = 'transform 0.4s'; fq[w].el.style.webkitTransform = fq[w].el.style.transform = ''; }
+                setTimeout(function() { for (var z = 0; z < fq.length; z++) { fq[z].el.style.webkitTransition = fq[z].el.style.transition = ''; fq[z].el.style.webkitTransformOrigin = fq[z].el.style.transformOrigin = ''; } }, 500);
+            }
             if (jogo.el && jogo.el.parentNode) jogo.el.parentNode.removeChild(jogo.el);
             jogo = null;
+            renderizar();
         }
         function novaPessoa() {
             fecharJanelaPessoa();
@@ -2113,6 +2169,7 @@
         }
 
         function renderizar() {
+            if (jogo && jogo.caiu) return;   // game: com a página caída, não redesenha por cima
             var sc = [];
             try {
                 var els = document.querySelectorAll('.lista-itens, .painel-lateral, #app-conteudo');
