@@ -868,17 +868,22 @@
                 if (ft >= vooFim) { // foice corta o pescoço (12 quadros)
                     var tc = Math.min(1, (ft - vooFim) / 12);
                     ang = -2.4 + tc * 3.8; fx = px; fy = ny;
-                    if (ft - vooFim === 6 && h.estado === 'parado') cortar(h);
+                    if (ft - vooFim >= 6 && h.estado === 'parado') { cortar(h); j.tCorte = Date.now(); }
                     if (tc >= 1) { ang = 1.4; fx = px - S * 0.2; fy = ny; }
                 }
                 foiceDes(fx, fy, tam * 0.55, ang);
                 // martelo: fica no ícone enquanto a foice trabalha; depois de cortar a cabeça, cai direto em cima do boneco
-                var iniMart = vooFim + 14;
-                if (ft < iniMart) martelo(icX, icY, icS * 1.4, 0);
+                var agora = Date.now();
+                if (!j.tCorte || agora - j.tCorte < 13000) martelo(icX, icY, icS * 1.4, 0);   // espera 13 s depois do corte
                 else {
-                    var tm = Math.min(1, (ft - iniMart) / 14), y0 = -S, y1 = h.y - S * 0.38;
+                    if (!j.quedaF) j.quedaF = 0;
+                    var tm = Math.min(1, (j.quedaF++) / 14), y0 = -S, y1 = h.y - S * 0.38;
                     martelo(h.x, y0 + (y1 - y0) * tm * tm, S, 0);
-                    if (tm >= 1 && !h.crush) { h.crush = true; var q; for (q = 0; q < 30; q++) h.sang.push({ x: h.x, y: h.y - 4, vx: (Math.random() - 0.5) * p * 3, vy: -Math.random() * p * 2.2, v: 40 + Math.random() * 30 }); }
+                    if (tm >= 1 && !h.crush) { h.crush = true; j.tCrush = agora; var q; for (q = 0; q < 30; q++) h.sang.push({ x: h.x, y: h.y - 4, vx: (Math.random() - 0.5) * p * 3, vy: -Math.random() * p * 2.2, v: 40 + Math.random() * 30 }); }
+                    if (h.crush && agora - j.tCrush >= 10000) { // 10 s depois do martelo caído: o jogo reinicia
+                        j.h = novo(); j.fase = 0; j.ft = 0; j.tCorte = 0; j.quedaF = 0; j.tCrush = 0; j.toques = [];
+                        if (ic) ic.style.visibility = 'visible';
+                    }
                 }
             }
             function passo() {
