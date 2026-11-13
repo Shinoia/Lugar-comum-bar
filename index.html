@@ -72,7 +72,7 @@
             <button id="btn-aba-bar" class="btn-tab" onclick="mudarAba('bar')">🍻 Bar</button>
             <button id="btn-aba-abertas" class="btn-tab" onclick="mudarAba('abertas')">📋 Abertas</button>
             <button id="btn-aba-finalizadas" class="btn-tab" onclick="mudarAba('finalizadas')">✅ Finalizadas</button>
-            <button class="btn-dia" onclick="finalizarDia()">🏁 Finalizar Dia</button>
+            <button class="btn-dia" id="btn-dia" onclick="finalizarDia()">🏁 Finalizar Dia</button>
             <span id="info-usuario" class="sync-status" style="background:#fff;"></span>
             <button class="btn-tab" onclick="sair()" title="Sair deste aparelho">Sair</button>
         </div>
@@ -130,7 +130,7 @@
                 return res.clone().json().then(function(j) {
                     if (j && j.negado) {
                         CHAVE = ''; USUARIO = ''; guardarSessao('', '');
-                        pedirChave('Usuário ou senha incorretos.');
+                        pedirChave(j.off ? 'Seu acesso está desativado (off).' : 'Usuário ou senha incorretos.');
                     }
                     return res;
                 }).catch(function() { return res; });
@@ -175,7 +175,9 @@
         function atualizarUsuario() {
             var el = document.getElementById('info-usuario');
             if (!el) return;
-            el.textContent = estado.usuario ? ('👤 ' + estado.usuario.nome + (estado.usuario.admin ? ' (admin)' : '') + ' · script ' + (estado.versao || '?')) : '';
+            var bd = document.getElementById('btn-dia');
+            if (bd) bd.style.display = (estado.usuario && !estado.usuario.admin) ? 'none' : ''; // user não vê Finalizar Dia
+            el.textContent = estado.usuario ? ('👤 ' + estado.usuario.nome + (estado.usuario.supreme ? ' (supreme)' : estado.usuario.admin ? ' (admin)' : ' (user)') + ' · script ' + (estado.versao || '?')) : '';
         }
         function exigirAdmin() {
             if (estado.usuario && !estado.usuario.admin) { alert('Somente administradores podem fazer isso.'); return false; }
@@ -335,7 +337,7 @@
         }
 
         // ---- modo TESTE (login Queen): pedidos marcados com [TESTE] na observação, mostrados em roxo com a etiqueta TESTE ----
-        function souTeste() { return String(USUARIO || '').trim().toUpperCase() === 'QUEEN'; }
+        function souTeste() { return !!(estado.usuario && estado.usuario.supreme); } // papel supreme (coluna C da aba Key)
         function etiquetaTeste() { return '<b style="background:#6d28d9; color:#fff; border-radius:0.3rem; padding:0 0.4rem; font-size:0.75rem; letter-spacing:0.05em;">TESTE</b>'; }
         function mesaTeste(m) { return !!(m && m.itens && m.itens.some(function(it) { return it.teste; })); }
         function itemEhCaixa(it) { return String(it.tipo || '').toLowerCase().indexOf('caixa') >= 0; }
