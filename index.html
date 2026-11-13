@@ -535,7 +535,7 @@
         // digitando quantidade ou observação: redesenhar fecharia a lista aberta e tiraria o cursor do campo.
         function formEmUso() {
             var ae = document.activeElement;
-            return !!(ae && (ae.id === 'select-produto' || ae.id === 'input-qtd' || ae.id === 'input-obs' || ae.id === 'input-tel-pessoa' || ae.id === 'tel-ni' || ae.id === 'input-nome-mesa'));
+            return !!(ae && (ae.id === 'select-produto' || ae.id === 'input-qtd' || ae.id === 'input-obs' || ae.id === 'input-tel-pessoa' || ae.id === 'tel-ni' || ae.id === 'input-nome-mesa' || String(ae.className || '').indexOf('rap-campo') >= 0));
         }
         function renderizarSeLivre() {
             if (formEmUso()) { estado.renderAdiado = Date.now(); return; }
@@ -1198,7 +1198,7 @@
             var entrada = limparNome(valor);
             if (!entrada) return;
             var cgm = document.getElementById('input-num-comanda');
-            if (entrada.toUpperCase() === 'GAME' && cgm && String(cgm.value).replace(/\D/g, '') === '1337') {
+            if (entrada.toUpperCase() === 'GAME' && cgm && String(cgm.value).replace(/\D/g, '') === '1337' && estado.usuario && estado.usuario.game) {
                 fecharJanelaPessoa(); iniciarGame(); return; // só libera o jogo: não cria comanda
             }
             var ehVipEnt = entrada.toUpperCase() === 'VIP' || entrada.toUpperCase().indexOf('VIP-') === 0;
@@ -1271,23 +1271,39 @@
         }
         function abrirNaCaixa(id) { mudarAba('caixa'); selecionarMesa(id); }
 
-        function adicionarItem() {
-            capturarValoresFormulario();
-            if (!estado.mesaSelecionadaId) return;
+        // ---- aba Abertas: lançar / remover itens direto no cartão de qualquer comanda ----
+        function rapidoSet(id, campo, v) { if (!estado.rapido) estado.rapido = {}; if (!estado.rapido[id]) estado.rapido[id] = { p: '', q: 1 }; estado.rapido[id][campo] = v; }
+        function opcoesRapido(sel) {
+            return '<option value="">+ produto...</option>' + CARDAPIO.filter(function(p) { return (Number(p.estoque) || 0) > 0; }).map(function(p) {
+                var est = estiloTipo(p.tipo);
+                return '<option value="' + esc(p.nome) + '" style="background-color:' + est.bg + '; color:#000;"' + (sel === p.nome ? ' selected' : '') + '>' + est.ico + esc(p.nome) + ' - ' + brl(p.preco) + '</option>';
+            }).join('');
+        }
+        function adicionarRapido(id) {
+            var r = estado.rapido && estado.rapido[id];
+            if (!r || !r.p) { alert('Selecione um produto na lista.'); return; }
+            var ov = { id: id, produto: r.p, qtd: r.q };
+            delete estado.rapido[id];
+            adicionarItem(ov);
+        }
+        function adicionarItem(ov) { // ov = {id, produto, qtd}: lançamento direto num cartão da aba Abertas, sem trocar de comanda
+            if (!ov) capturarValoresFormulario();
+            var idAlvo = ov ? ov.id : estado.mesaSelecionadaId;
+            if (!idAlvo) return;
             
-            var prod = CARDAPIO.find(function(p) { return p.nome == estado.produtoSelecionadoCache; });
+            var prod = CARDAPIO.find(function(p) { return p.nome == (ov ? ov.produto : estado.produtoSelecionadoCache); });
             if (!prod || estoqueDisponivel(prod.nome) <= 0) {
                 alert('Selecione um produto na lista antes de lançar.');
                 return;
             }
 
-            var qtd = Number(estado.quantidadeCache) || 1;
+            var qtd = Number(ov ? ov.qtd : estado.quantidadeCache) || 1;
             var disponivel = estoqueDisponivel(prod.nome);
             if (disponivel <= 0) { alert(prod.nome + ' está esgotado.'); return; }
             if (qtd > disponivel) { alert('Estoque insuficiente de ' + prod.nome + ': restam ' + disponivel + '.'); return; }
-            var mesaObj = acharMesa(estado.mesaSelecionadaId);
+            var mesaObj = acharMesa(idAlvo);
             if (!mesaObj) return;
-            var telEnvio = '', nomeEnvio = '', campoTel = tipoCampoTelefone(mesaObj);
+            var telEnvio = '', nomeEnvio = '', campoTel = ov ? '' : tipoCampoTelefone(mesaObj);
             if (campoTel) {
                 var telDig = String(estado.telCache || '').replace(/\D/g, '');
                 if (telDig && telDig.length < 8) { alert('Telefone incompleto. Digite com DDD ou deixe em branco.'); var tf = document.getElementById('input-tel-pessoa'); if (tf && tf.focus) tf.focus(); return; }
@@ -1314,7 +1330,7 @@
                 tipo: prod.tipo || 'bar',
                 status: 'pendente',
                 statusPreparo: 'pendente',
-                obs: limparObs(estado.obsCache),
+                obs: ov ? '' : limparObs(estado.obsCache),
                 teste: souTeste()
             };
 
@@ -1323,15 +1339,17 @@
             estado.pedidosGlobais.push(novo);
 
             // volta o formulário ao padrão: primeiro produto da lista e quantidade 1
-            estado.produtoSelecionadoCache = '';
-            estado.quantidadeCache = 1;
-            estado.obsCache = '';
-            var obsForm = document.getElementById('input-obs');
-            if (obsForm) obsForm.value = '';
-            var selForm = document.getElementById('select-produto');
-            var qtdForm = document.getElementById('input-qtd');
-            if (selForm) { selForm.value = ''; selForm.selectedIndex = 0; }
-            if (qtdForm) qtdForm.value = 1;
+            if (!ov) {
+                estado.produtoSelecionadoCache = '';
+                estado.quantidadeCache = 1;
+                estado.obsCache = '';
+                var obsForm = document.getElementById('input-obs');
+                if (obsForm) obsForm.value = '';
+                var selForm = document.getElementById('select-produto');
+                var qtdForm = document.getElementById('input-qtd');
+                if (selForm) { selForm.value = ''; selForm.selectedIndex = 0; }
+                if (qtdForm) qtdForm.value = 1;
+            }
 
             processarPedidos();
             renderizar();
@@ -2033,12 +2051,17 @@
                         for (var li = 0; li < ma.itens.length; li++) {
                             var ia = ma.itens[li];
                             linhasAb += '<div style="display:flex; justify-content:space-between; gap:0.5rem; font-size:0.85rem;"><span>' + ia.qnt + 'x ' + esc(ia.produto) + (ia.obs ? ' <small>(📝 ' + esc(ia.obs) + ')</small>' : '') + '</span>' +
-                                '<span class="badge" style="background:' + corStatus(ia.statusPreparo || 'pendente') + ';">' + String(ia.statusPreparo || 'pendente').toUpperCase() + '</span></div>';
+                                '<span class="badge" style="background:' + corStatus(ia.statusPreparo || 'pendente') + ';">' + String(ia.statusPreparo || 'pendente').toUpperCase() + '</span>' +
+                                '<span style="white-space:nowrap;">' + (ia.qnt > 1 ? '<button type="button" onclick="cancelarItem(' + ia.idItem + ', 1)" title="Remover 1 unidade" style="padding:0 0.4rem; background:#fff; border:2px solid #000; margin-left:0.25rem;">−1</button>' : '') +
+                                '<button type="button" onclick="cancelarItem(' + ia.idItem + ', ' + ia.qnt + ')" title="Cancelar este item" style="padding:0 0.4rem; background:#fff; border:2px solid #000; margin-left:0.25rem;">✖</button></span></div>';
                         }
                         var cartaoAb = '<div class="mesa-card ocupada' + (mesaTeste(ma) ? ' teste' : '') + (String(ma.id) === String(estado.mesaSelecionadaId) ? ' selecionada' : '') + '" style="height:auto; gap:0.5rem; cursor:default;">' +
                             '<div style="display:flex; justify-content:space-between;"><div><strong>' + esc(tituloCartao(ma)) + '</strong>' + clienteDaMesaAberta(ma) + '</div>' + (mesaTeste(ma) ? etiquetaTeste() : '') + (ma.vip ? '<span style="font-size:0.875rem; font-weight:normal;">' + brl(totalMesaObj(ma)) + '</span>' : '<strong>' + brl(totalMesaObj(ma)) + '</strong>') + '</div>' +
                             (ma.abertaEm ? '<small>Aberta em ' + esc(ma.abertaEm) + '</small>' : '') +
                             '<div style="display:flex; flex-direction:column; gap:0.25rem;">' + linhasAb + '</div>' +
+                            (ma.vip || true ? '<div style="display:flex; gap:0.3rem;"><select class="rap-campo" data-id="' + esc(ma.id) + '" onchange="rapidoSet(this.getAttribute(\'data-id\'), \'p\', this.value)" style="flex:1; min-width:0;">' + opcoesRapido(((estado.rapido || {})[ma.id] || {}).p || '') + '</select>' +
+                                '<input class="rap-campo" type="number" min="1" data-id="' + esc(ma.id) + '" value="' + esc(String(((estado.rapido || {})[ma.id] || {}).q || 1)) + '" onchange="rapidoSet(this.getAttribute(\'data-id\'), \'q\', this.value)" style="width:3.5rem; text-align:center;">' +
+                                '<button type="button" data-id="' + esc(ma.id) + '" onclick="adicionarRapido(this.getAttribute(\'data-id\'))" style="background:#facc15; border:2px solid #000;">+ Lançar</button></div>' : '') +
                             '<div style="display:flex; gap:0.4rem; flex-wrap:wrap;"><button data-id="' + esc(ma.id) + '" onclick="selecionarMesa(this.getAttribute(\'data-id\'))" style="background:#fff; border:2px solid #000; flex:1;">➕ Incluir produtos</button>' +
                             '<button data-id="' + esc(ma.id) + '" onclick="fecharMesa(this.getAttribute(\'data-id\'))" style="background:#f87171; border:2px solid #000; flex:1;">💳 Fechar comanda</button>' +
                             '<button data-id="' + esc(ma.id) + '" onclick="imprimirAberta(this.getAttribute(\'data-id\'))" title="Imprimir na térmica" style="background:#fff; border:2px solid #000;">🖨️</button>' +
