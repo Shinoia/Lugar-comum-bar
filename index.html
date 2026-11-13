@@ -1248,6 +1248,18 @@
             if (!ach || (!ach.nome && !ach.tel)) return '';
             return ' <span style="font-weight:normal;">· ' + esc(ach.nome || '') + (ach.tel ? ' 📞 ' + esc(ach.tel) : '') + '</span>';
         }
+        // nome (+ telefone) informado no 1º pedido da mesa que está aberta agora
+        function clienteDaMesaAberta(m) {
+            if (!m || m.pessoa || m.vip || m.status !== 'ocupada') return '';
+            var ord = function(t) { var x = String(t).match(/(\d{2})\/(\d{2})\/(\d{4}) (\d{2}):(\d{2}):(\d{2})/); return x ? x[3] + x[2] + x[1] + x[4] + x[5] + x[6] : ''; };
+            var de = ord(m.abertaEm), ach = null;
+            (estado.telefones || []).forEach(function(t) {
+                if (String(t.mesa) !== String(m.id)) return;
+                if (!de || ord(t.t) >= de) ach = t;
+            });
+            if (!ach || (!ach.nome && !ach.tel)) return '';
+            return '<div style="font-size:0.8rem; font-weight:normal;">' + esc(ach.nome || '') + (ach.tel ? ' 📞 ' + esc(ach.tel) : '') + '</div>';
+        }
         function rotuloChave(k) {
             k = String(k);
             if (ehPessoa(k)) return k.substring(PREFIXO_PESSOA.length);
@@ -1574,7 +1586,7 @@
                             if (itCx.length) corCx = itCx.every(function(i) { return i.statusPreparo === 'entregue'; }) ? corStatus('entregue') : corStatus('pendente');
                         }
                         return '<div class="mesa-card ' + classeOcupada + ' ' + classeSelecionada + '" data-id="' + esc(m.id) + '" onclick="selecionarMesa(this.getAttribute(\'data-id\'))">' +
-                            '<div style="display: flex; justify-content: space-between; gap: 0.25rem;"><strong style="overflow-wrap:anywhere;">' + esc(nomeMesa(m)) + '</strong>' + (mesaTeste(m) ? etiquetaTeste() : '') + '<span style="white-space: nowrap;">' + bolinha('bar', corBar) + bolinha('coz', corCoz) + (corCx ? bolinha('cx', corCx) : '') + '</span></div>' +
+                            '<div style="display: flex; justify-content: space-between; gap: 0.25rem;"><div><strong style="overflow-wrap:anywhere;">' + esc(nomeMesa(m)) + '</strong>' + clienteDaMesaAberta(m) + '</div>' + (mesaTeste(m) ? etiquetaTeste() : '') + '<span style="white-space: nowrap;">' + bolinha('bar', corBar) + bolinha('coz', corCoz) + (corCx ? bolinha('cx', corCx) : '') + '</span></div>' +
                             '<div><div style="font-size: 0.75rem;">' + textoStatus + '</div></div>' +
                         '</div>';
                     }
@@ -1611,7 +1623,7 @@
                                 '<span class="badge" style="background:' + corStatus(ia.statusPreparo || 'pendente') + ';">' + String(ia.statusPreparo || 'pendente').toUpperCase() + '</span></div>';
                         }
                         var cartaoAb = '<div class="mesa-card ocupada' + (mesaTeste(ma) ? ' teste' : '') + (String(ma.id) === String(estado.mesaSelecionadaId) ? ' selecionada' : '') + '" style="height:auto; gap:0.5rem; cursor:default;">' +
-                            '<div style="display:flex; justify-content:space-between;"><strong>' + esc(nomeMesa(ma)) + '</strong>' + (mesaTeste(ma) ? etiquetaTeste() : '') + (ma.vip ? '<span style="font-size:0.875rem; font-weight:normal;">' + brl(totalMesaObj(ma)) + '</span>' : '<strong>' + brl(totalMesaObj(ma)) + '</strong>') + '</div>' +
+                            '<div style="display:flex; justify-content:space-between;"><div><strong>' + esc(nomeMesa(ma)) + '</strong>' + clienteDaMesaAberta(ma) + '</div>' + (mesaTeste(ma) ? etiquetaTeste() : '') + (ma.vip ? '<span style="font-size:0.875rem; font-weight:normal;">' + brl(totalMesaObj(ma)) + '</span>' : '<strong>' + brl(totalMesaObj(ma)) + '</strong>') + '</div>' +
                             (ma.abertaEm ? '<small>Aberta em ' + esc(ma.abertaEm) + '</small>' : '') +
                             '<div style="display:flex; flex-direction:column; gap:0.25rem;">' + linhasAb + '</div>' +
                             '<div style="display:flex; gap:0.4rem; flex-wrap:wrap;"><button data-id="' + esc(ma.id) + '" onclick="selecionarMesa(this.getAttribute(\'data-id\'))" style="background:#fff; border:2px solid #000; flex:1;">➕ Incluir produtos</button>' +
