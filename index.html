@@ -675,7 +675,6 @@
             var v = estado.vr; if (!v) return;
             var s = document.getElementById('vr-produto'), q = document.getElementById('vr-qtd'), o = document.getElementById('vr-obs');
             if (s) v.sel = s.value; if (q) v.qtd = q.value; if (o) v.obs = o.value;
-            var cp1 = document.getElementById('vr-completo'); if (cp1) v.completo = cp1.checked;
             var n1 = document.getElementById('vr-nome'), t1 = document.getElementById('vr-tel'), ni1 = document.getElementById('vr-ni');
             if (ni1) v.ni = ni1.checked;
             if (n1) v.nome = n1.value; if (t1) v.tel = t1.value;
@@ -724,7 +723,7 @@
                 '<div style="background:#ef4444; border-radius:0.5rem; padding:0.6rem; margin-bottom:0.6rem;">' + itens + '</div>' +
                 '<div style="background:#fff; border:2px solid #000; border-radius:0.5rem; padding:0.6rem; margin-bottom:0.6rem;"><b>Forma de pagamento *</b><div style="display:flex; flex-wrap:wrap; margin-top:0.3rem;">' + formas + '</div></div>' +
                 (v.forma === 'Dinheiro' ? '<div style="background:#fff; border:2px solid #000; border-radius:0.5rem; padding:0.6rem; margin-bottom:0.6rem;"><label style="font-size:0.8rem;">Valor recebido (R$)</label><input type="text" id="vr-recebido" inputmode="decimal" value="' + esc(v.recebido || '') + '" oninput="vrTroco()" style="width:100%; margin:0.2rem 0;"><div id="vr-troco" style="font-weight:800;">' + vrTrocoTxt() + '</div></div>' : '') +
-                (souTeste() ? '<div style="background:#ede9fe; border:2px solid #6d28d9; border-radius:0.5rem; padding:0.5rem; margin-bottom:0.6rem; font-size:0.85rem;">' + etiquetaTeste() + ' venda de teste<label style="display:block; margin-top:0.3rem;"><input type="checkbox" style="width:auto; display:inline-block; margin-right:0.4rem;" id="vr-completo" onchange="vrForm()"' + (v.completo ? ' checked' : '') + '> <b>Efetuar teste completo</b> (planilha + impressão). Desmarcado: não consta no sistema.</label></div>' : '') +
+                (souTeste() ? '<div style="background:#ede9fe; border:2px solid #6d28d9; border-radius:0.5rem; padding:0.5rem; margin-bottom:0.6rem; font-size:0.85rem;">' + etiquetaTeste() + ' venda de teste — pagamento opcional.</div>' : '') +
                 '<div id="vr-erro" style="color:#fff; font-weight:700; min-height:1.1rem; margin-bottom:0.4rem;"></div>' +
                 '<div style="display:flex; gap:0.5rem;"><button type="button" onclick="vrImprimir()" style="flex:1; background:#fff; border:2px solid #000;"' + (v.enviando ? ' disabled' : '') + '>🖨️ Imprimir</button>' +
                 '<button type="button" onclick="vrConfirmar(false)" style="flex:1; background:#22c55e; border:2px solid #000; font-weight:800;"' + (v.enviando ? ' disabled' : '') + '>✔ Finalizar</button></div></div>';
@@ -774,7 +773,7 @@
             if (vnome.length < 2) { vrErro('Informe o nome.'); return; }
             if (vtel && vtel.length < 8) { vrErro('Telefone incompleto: digite com DDD ou deixe em branco.'); return; }
             if (!v.itens.length) { vrErro('Adicione pelo menos um produto.'); return; }
-            if (!v.forma && !(souTeste() && !v.completo)) { vrErro('Selecione a forma de pagamento: Débito, Crédito, PIX ou Dinheiro.'); return; }
+            if (!v.forma && !souTeste()) { vrErro('Selecione a forma de pagamento: Débito, Crédito, PIX ou Dinheiro.'); return; }
             if (v.forma === 'Dinheiro' && vrValor(v.recebido) && vrValor(v.recebido) + 0.0001 < vrTotal()) { vrErro('O valor recebido é menor que o total.'); return; }
             v.confirmando = { imprimir: imprimir };
             vrDesenhar();
@@ -797,8 +796,8 @@
             var chave = PREFIXO_PESSOA + 'Comanda ' + rotuloNumero('VR') + ' - VR - ' + vnome + (vtel ? ' - ' + vtel : '') + ' - ' + z(d.getHours()) + ':' + z(d.getMinutes());
             if (!estado.vrOcultas) estado.vrOcultas = {};
             estado.vrOcultas[chave] = Date.now();   // não aparece em Pessoas/Abertas enquanto fecha
-            var vteste = souTeste(), vdescartar = vteste && !v.completo;
-            var itens = v.itens.slice(), forma = (vteste && v.completo) ? 'Teste' : v.forma, total = vrTotal();
+            var vteste = souTeste(), vdescartar = false;
+            var itens = v.itens.slice(), forma = vteste ? 'Teste' : v.forma, total = vrTotal();
             var cadeia = Promise.resolve();
             itens.forEach(function(i) {
                 cadeia = cadeia.then(function() {
@@ -808,7 +807,7 @@
                 });
             });
             cadeia.then(function() {
-                if (imprimir || (vteste && v.completo)) {
+                if (imprimir) {
                     imprimirHtml(htmlRecibo({ teste: vteste, mesa: chave, tchau: agoraBR(), abertura: agoraBR(), itens: itens.map(function(i) { return { produto: i.produto, qnt: i.qnt, preco: i.preco, obs: i.obs || '', pedidoEm: '' }; }), total: total, forma: forma }, 'FINAL'), 'Venda rápida');
                 }
                 vrFechar();
@@ -1068,15 +1067,13 @@
                 return '<div style="display:flex; justify-content:space-between; gap:0.5rem; font-size:0.85rem;"><span>' + it.qnt + 'x ' + esc(it.produto) + '</span><span>' + brl(it.qnt * it.preco) + '</span></div>';
             }).join('') || '<div style="font-size:0.85rem;">Sem itens lançados.</div>';
             var teste = souTeste() && mesaTeste(m);
-            var precisaForma = m.itens.length > 0 && (!teste || f.completo);
+            var precisaForma = m.itens.length > 0 && !teste; // comanda de teste: pagamento opcional
             var botoes = '';
             if (teste) {
-                botoes += '<div style="background:#ede9fe; border:2px solid #6d28d9; border-radius:0.5rem; padding:0.5rem; margin-top:0.75rem; font-size:0.85rem;">' + etiquetaTeste() + ' comanda de teste' +
-                    '<label style="display:block; margin-top:0.4rem;"><input type="checkbox" style="width:auto; display:inline-block; margin-right:0.4rem;" onchange="alternarTesteCompleto(this.checked)"' + (f.completo ? ' checked' : '') + '> <b>Efetuar teste completo</b> (envia para a planilha e imprime)</label>' +
-                    '<div style="margin-top:0.3rem; font-size:0.8rem;">' + (f.completo ? 'Escolha a forma de pagamento abaixo (fica registrada como TESTE).' : 'Desmarcado: a comanda só fecha e não consta no sistema.') + '</div></div>';
+                botoes += '<div style="background:#ede9fe; border:2px solid #6d28d9; border-radius:0.5rem; padding:0.5rem; margin-top:0.75rem; font-size:0.85rem;">' + etiquetaTeste() + ' comanda de teste — o pagamento é opcional e fica registrado como TESTE.</div>';
             }
-            if (precisaForma) {
-                botoes += '<div style="font-size:0.85rem; margin:0.75rem 0 0.25rem;"><b>Forma de pagamento:</b> <span style="color:#b91c1c;">' + (f.forma ? '' : '(escolha uma)') + '</span></div><div style="display:grid; grid-template-columns:1fr 1fr; gap:0.5rem;">' +
+            if (m.itens.length > 0) {
+                botoes += '<div style="font-size:0.85rem; margin:0.75rem 0 0.25rem;"><b>Forma de pagamento:</b> <span style="color:#b91c1c;">' + (f.forma ? '' : (teste ? '(opcional)' : '(escolha uma)')) + '</span></div><div style="display:grid; grid-template-columns:1fr 1fr; gap:0.5rem;">' +
                     FORMAS_PAGAMENTO.concat(teste ? ['Teste'] : []).map(function(fp) {
                         var sel = f.forma === fp;
                         return '<button type="button" data-forma="' + esc(fp) + '" onclick="escolherForma(this.getAttribute(\'data-forma\'))" style="border:2px solid #000; padding:0.6rem; font-weight:bold; background:' + (sel ? '#4ade80' : '#fff') + ';">' + (sel ? '✔ ' : '') + esc(fp) + '</button>';
@@ -1093,7 +1090,6 @@
                     '<button type="button" onclick="confirmarFechamento()" style="background:#f87171; border:2px solid #000; flex:1;">' + 'Confirmar fechamento' + '</button>' +
                 '</div></div>';
         }
-        function alternarTesteCompleto(on) { if (estado.fechamento) { estado.fechamento.completo = !!on; desenharFechamento(); } }
         function escolherForma(fp) { if (estado.fechamento) { estado.fechamento.forma = fp; desenharFechamento(); } }
         // ---- só Queen: apagar comandas (cuidado: não dá para desfazer) ----
         function apagarFinalizada(k) {
@@ -1161,11 +1157,11 @@
         function confirmarFechamento() {
             var f = estado.fechamento, mesaObj = f && acharMesa(f.id);
             if (!mesaObj) { fecharJanelaFechamento(); return; }
-            var teste = souTeste() && mesaTeste(mesaObj), descartar = teste && !f.completo;
-            var precisaForma = mesaObj.itens.length > 0 && !descartar;
+            var teste = souTeste() && mesaTeste(mesaObj), descartar = false;
+            var precisaForma = mesaObj.itens.length > 0 && !teste;
             if (precisaForma && !f.forma) { alert('Selecione a forma de pagamento: Débito, Crédito, PIX ou Dinheiro.'); return; }
             var forma = precisaForma ? f.forma : '';
-            if (teste && f.completo) forma = 'Teste';
+            if (teste) forma = 'Teste'; // comanda de teste: sempre registrada como TESTE
             fecharJanelaFechamento();
             estado.fechamento = null;
             var idAlvo = mesaObj.pessoa ? mesaObj.id : (mesaObj.idExibicao || mesaObj.id);
@@ -1173,7 +1169,7 @@
                 estado.pessoasNovas = estado.pessoasNovas.filter(function(n) { return n !== mesaObj.id; });
             }
             // recibo final (impressão automática ao fechar, se marcada)
-            if ((teste ? !!f.completo : lerConfig('autoimp', '0') === '1') && mesaObj.itens.length > 0) {
+            if (lerConfig('autoimp', '0') === '1' && mesaObj.itens.length > 0) {
                 var rcb = reciboDaMesa(mesaObj, forma); if (teste) rcb.teste = true;
                 imprimirHtml(htmlRecibo(rcb, 'FINAL'));
             }
@@ -1356,10 +1352,39 @@
                 alert("Não é possível finalizar o dia! Ainda existem mesas abertas.\nVá na aba 📋 Abertas e use \"Encerrar todas\" (senha) se for o caso.");
                 return;
             }
+            var temTeste = (estado.finalizadas || []).some(function(f) { return f.teste || f.forma === 'Teste'; });
+            if (souTeste() && temTeste) { abrirJanelaFinalizarDia(); return; }
             var senha = prompt("Digite a senha para finalizar o dia:");
             if (senha === null) return;
-
-            fetch(API_URL + '?acao=finalizar_dia&senha=' + encodeURIComponent(senha))
+            executarFinalizarDia(senha, false);
+        }
+        // Queen com comandas de teste no dia: pede a senha e se o teste deve ir "completo" para a planilha + impressão
+        function abrirJanelaFinalizarDia() {
+            var el = document.createElement('div');
+            el.id = 'janela-fd';
+            el.style.cssText = 'position:fixed; top:0; left:0; right:0; bottom:0; width:100%; height:100%; background:rgba(0,0,0,0.5); display:flex; align-items:center; justify-content:center; z-index:70; padding:1rem;';
+            el.innerHTML = '<div style="background:#fff; border:3px solid #000; border-radius:0.75rem; padding:1rem; width:100%; max-width:26rem; color:#000;">' +
+                '<h3 style="margin-bottom:0.5rem;">Finalizar o dia</h3>' +
+                '<div style="background:#ede9fe; border:2px solid #6d28d9; border-radius:0.5rem; padding:0.5rem; font-size:0.85rem; margin-bottom:0.6rem;">' + etiquetaTeste() + ' existem comandas de teste hoje.' +
+                    '<label style="display:block; margin-top:0.4rem;"><input type="checkbox" id="fd-completo" style="width:auto; display:inline-block; margin-right:0.4rem;"> <b>Efetuar teste completo</b> (as comandas de teste vão para a planilha e para a impressão)</label>' +
+                    '<div style="margin-top:0.3rem;">Desmarcado: as comandas de teste são apagadas e não constam no sistema.</div></div>' +
+                '<label style="font-size:0.8rem;">Senha para finalizar o dia</label>' +
+                '<input type="password" id="fd-senha" autocomplete="off" style="width:100%; margin:0.25rem 0 0.75rem;">' +
+                '<div style="display:flex; gap:0.5rem; justify-content:flex-end;"><button type="button" onclick="fecharJanelaFD()" style="background:#fff; border:2px solid #000;">Cancelar</button>' +
+                '<button type="button" onclick="confirmarJanelaFD()" style="background:#22c55e; border:2px solid #000; font-weight:800;">Finalizar dia</button></div></div>';
+            document.body.appendChild(el);
+            var i = document.getElementById('fd-senha'); if (i && i.focus) i.focus();
+        }
+        function fecharJanelaFD() { var el = document.getElementById('janela-fd'); if (el && el.parentNode) el.parentNode.removeChild(el); }
+        function confirmarJanelaFD() {
+            var senha = (document.getElementById('fd-senha') || {}).value || '';
+            var completo = !!(document.getElementById('fd-completo') || {}).checked;
+            fecharJanelaFD();
+            if (!senha) return;
+            executarFinalizarDia(senha, completo);
+        }
+        function executarFinalizarDia(senha, completo) {
+            fetch(API_URL + '?acao=finalizar_dia&senha=' + encodeURIComponent(senha) + (completo ? '&teste=1' : ''))
                 .then(function(res) { return res.json(); })
                 .then(function(r) {
                     if (r && r.result === 'success') {
