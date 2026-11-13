@@ -190,7 +190,13 @@
             { nome: "Kariri", preco: 10.00, estoque: 30, tipo: "bar" },
             { nome: "Conserva", preco: 15.00, estoque: 20, tipo: "cozinha" }
         ];
-        
+        // última lista de produtos recebida da planilha fica guardada neste aparelho: abre instantâneo, sem esperar a planilha
+        var CARDAPIO_OK = false;
+        try {
+            var cacheCard = JSON.parse(localStorage.getItem('cardapioCache') || 'null');
+            if (cacheCard && cacheCard.length) { CARDAPIO = cacheCard; CARDAPIO_OK = true; }
+        } catch (eC) {}
+
         var estado = {
             abaAtiva: 'caixa',
             mesaSelecionadaId: null,
@@ -528,7 +534,12 @@
                     marcarConexao(!!data);
                     if (data) {
                         if (data.produtos && data.produtos.length > 0) {
+                            var antesCard = JSON.stringify(CARDAPIO);
                             CARDAPIO = data.produtos;
+                            CARDAPIO_OK = true;
+                            try { localStorage.setItem('cardapioCache', JSON.stringify(CARDAPIO)); } catch (eC2) {}
+                            // janela de venda rápida aberta: atualiza a lista de produtos assim que chegar
+                            if (estado.vr && !estado.vr.enviando && antesCard !== JSON.stringify(CARDAPIO)) { vrForm(); vrDesenhar(); }
                         }
                         if (data.frequentes) estado.frequentes = data.frequentes;
                         if (data.clientes) estado.clientes = data.clientes;
@@ -741,6 +752,7 @@
                     var est = estiloTipo(p.tipo);
                     return '<option value="' + esc(p.nome) + '" style="background-color:' + est.bg + '; color:#000;"' + (v.sel === p.nome ? ' selected' : '') + '>' + est.ico + esc(p.nome) + ' - ' + brl(p.preco) + '</option>';
                 }).join('');
+            if (!CARDAPIO_OK) opc = '<option value="">⏳ Carregando produtos da planilha...</option>';
             var itens = v.itens.map(function(i, k) {
                 return '<div style="display:flex; justify-content:space-between; align-items:center; gap:0.5rem; padding:0.4rem 0; border-bottom:1px solid rgba(0,0,0,0.25);">' +
                     '<div><b>' + i.qnt + 'x ' + esc(i.produto) + '</b><br><small>' + brl(i.preco) + ' | Subtotal: ' + brl(i.qnt * i.preco) + (i.obs ? ' | ' + esc(i.obs) : '') + '</small></div>' +
@@ -1555,6 +1567,7 @@
 
 
             opcoesHtml = '<option value=""' + (estado.produtoSelecionadoCache ? '' : ' selected') + '>— Selecione o produto —</option>' + opcoesHtml;
+            if (!CARDAPIO_OK) opcoesHtml = '<option value="">⏳ Carregando produtos da planilha...</option>';
 
             return '<div class="painel-lateral">' +
                 '<div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #991b1b; padding-bottom: 0.75rem; margin-bottom: 1rem;">' +
