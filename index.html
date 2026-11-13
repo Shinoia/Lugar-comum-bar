@@ -340,6 +340,13 @@
         function souTeste() { return !!(estado.usuario && estado.usuario.supreme); } // papel supreme (coluna C da aba Key)
         function etiquetaTeste() { return '<b style="background:#6d28d9; color:#fff; border-radius:0.3rem; padding:0 0.4rem; font-size:0.75rem; letter-spacing:0.05em;">TESTE</b>'; }
         function mesaTeste(m) { return !!(m && m.itens && m.itens.some(function(it) { return it.teste; })); }
+        // cores da lista de produtos: caixa = verde suave, bar = azul suave, cozinha = vermelho suave (+ bolinha no texto, p/ iPad que ignora a cor)
+        function estiloTipo(tipo) {
+            var t = String(tipo || 'bar').toLowerCase();
+            if (t.indexOf('caixa') >= 0) return { bg: '#dcfce7', ico: '💚 ' };
+            if (t.indexOf('cozinha') >= 0 || t.indexOf('petisco') >= 0 || t.indexOf('comida') >= 0) return { bg: '#fee2e2', ico: '🔴 ' };
+            return { bg: '#dbeafe', ico: '🔵 ' };
+        }
         function itemEhCaixa(it) { return String(it.tipo || '').toLowerCase().indexOf('caixa') >= 0; }
         function itemEhCozinha(it) {
             var t = String(it.tipo || 'bar').toLowerCase();
@@ -703,7 +710,8 @@
             if (!el || !v) return;
             var opc = '<option value=""' + (v.sel ? '' : ' selected') + '>— Selecione o produto —</option>' +
                 CARDAPIO.filter(function(p) { return (Number(p.estoque) || 0) > 0; }).map(function(p) {
-                    return '<option value="' + esc(p.nome) + '"' + (v.sel === p.nome ? ' selected' : '') + '>' + esc(p.nome) + ' - ' + brl(p.preco) + '</option>';
+                    var est = estiloTipo(p.tipo);
+                    return '<option value="' + esc(p.nome) + '" style="background-color:' + est.bg + '; color:#000;"' + (v.sel === p.nome ? ' selected' : '') + '>' + est.ico + esc(p.nome) + ' - ' + brl(p.preco) + '</option>';
                 }).join('');
             var itens = v.itens.map(function(i, k) {
                 return '<div style="display:flex; justify-content:space-between; align-items:center; gap:0.5rem; padding:0.4rem 0; border-bottom:1px solid rgba(0,0,0,0.25);">' +
@@ -1470,7 +1478,8 @@
                 if (esgotado) continue; // estoque 0 na planilha: não aparece no site
                 var selecionadoAttr = (pItem.nome === estado.produtoSelecionadoCache) ? 'selected' : '';
                 var disp = estoqueDisponivel(pItem.nome);
-                opcoesHtml += '<option value="' + esc(pItem.nome) + '" ' + selecionadoAttr + (esgotado ? ' disabled' : '') + '>' + esc(pItem.nome) + ' - ' + brl(pItem.preco) + (esgotado ? ' - ESGOTADO' : ' - ' + disp + ' un') + '</option>';
+                var est = estiloTipo(pItem.tipo);
+                opcoesHtml += '<option value="' + esc(pItem.nome) + '" style="background-color:' + est.bg + '; color:#000;" ' + selecionadoAttr + (esgotado ? ' disabled' : '') + '>' + est.ico + esc(pItem.nome) + ' - ' + brl(pItem.preco) + (esgotado ? ' - ESGOTADO' : ' - ' + disp + ' un') + '</option>';
             }
 
 
