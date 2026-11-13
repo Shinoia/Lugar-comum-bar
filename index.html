@@ -872,14 +872,14 @@
                     if (tc >= 1) { ang = 1.4; fx = px - S * 0.2; fy = ny; }
                 }
                 foiceDes(fx, fy, tam * 0.55, ang);
-                // martelo: ao chegar, ergue, desce e esmaga
-                var rot = (1 - k) * -9, mTam = tam;
-                if (ft >= vooFim + 14) {
-                    var tm = suave((ft - vooFim - 14) / 10);
-                    rot = -0.5 * (1 - tm); my = (h.y - BH - S * 0.55) + (S * 0.55 + BH - S * 0.38) * tm;
+                // martelo: fica no ícone enquanto a foice trabalha; depois de cortar a cabeça, cai direto em cima do boneco
+                var iniMart = vooFim + 14;
+                if (ft < iniMart) martelo(icX, icY, icS * 1.4, 0);
+                else {
+                    var tm = Math.min(1, (ft - iniMart) / 14), y0 = -S, y1 = h.y - S * 0.38;
+                    martelo(h.x, y0 + (y1 - y0) * tm * tm, S, 0);
                     if (tm >= 1 && !h.crush) { h.crush = true; var q; for (q = 0; q < 30; q++) h.sang.push({ x: h.x, y: h.y - 4, vx: (Math.random() - 0.5) * p * 3, vy: -Math.random() * p * 2.2, v: 40 + Math.random() * 30 }); }
                 }
-                martelo(mx, my, mTam, rot);
             }
             function passo() {
                 var h = j.h, k;
