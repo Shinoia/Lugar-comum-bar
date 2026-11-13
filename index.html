@@ -632,8 +632,8 @@
                 '<div style="background:#fff; border:2px solid #000; border-radius:0.5rem; padding:0.6rem; margin-bottom:0.6rem;"><b>Forma de pagamento *</b><div style="display:flex; flex-wrap:wrap; margin-top:0.3rem;">' + formas + '</div></div>' +
                 (v.forma === 'Dinheiro' ? '<div style="background:#fff; border:2px solid #000; border-radius:0.5rem; padding:0.6rem; margin-bottom:0.6rem;"><label style="font-size:0.8rem;">Valor recebido (R$)</label><input type="text" id="vr-recebido" inputmode="decimal" value="' + esc(v.recebido || '') + '" oninput="vrTroco()" style="width:100%; margin:0.2rem 0;"><div id="vr-troco" style="font-weight:800;">' + vrTrocoTxt() + '</div></div>' : '') +
                 '<div id="vr-erro" style="color:#fff; font-weight:700; min-height:1.1rem; margin-bottom:0.4rem;"></div>' +
-                '<div style="display:flex; gap:0.5rem;"><button type="button" onclick="vrConfirmar(false)" style="flex:1; background:#fca5a5; border:2px solid #000;"' + (v.enviando ? ' disabled' : '') + '>' + (v.enviando ? 'Enviando...' : '✔ Finalizar venda') + '</button>' +
-                '<button type="button" onclick="vrConfirmar(true)" style="flex:1; background:#22c55e; border:2px solid #000;"' + (v.enviando ? ' disabled' : '') + '>🖨️ Finalizar e imprimir</button></div></div>';
+                '<div style="display:flex; gap:0.5rem;"><button type="button" onclick="vrImprimir()" style="flex:1; background:#fff; border:2px solid #000;"' + (v.enviando ? ' disabled' : '') + '>🖨️ Imprimir</button>' +
+                '<button type="button" onclick="vrConfirmar(false)" style="flex:1; background:#22c55e; border:2px solid #000; font-weight:800;"' + (v.enviando ? ' disabled' : '') + '>✔ Finalizar</button></div></div>';
             if (v.confirmando) {
                 var rec = vrValor(v.recebido);
                 el.innerHTML = '<div style="background:#fff; border:3px solid #000; border-radius:0.75rem; padding:1rem; width:100%; max-width:26rem; margin:2rem auto; color:#000; text-align:center;">' +
@@ -683,6 +683,14 @@
             if (v.forma === 'Dinheiro' && vrValor(v.recebido) && vrValor(v.recebido) + 0.0001 < vrTotal()) { vrErro('O valor recebido é menor que o total.'); return; }
             v.confirmando = { imprimir: imprimir };
             vrDesenhar();
+        }
+        // só imprime a conferência (não fecha a venda)
+        function vrImprimir() {
+            var v = estado.vr; if (!v || v.enviando) return;
+            vrForm();
+            if (!v.itens.length) { vrErro('Adicione pelo menos um produto para imprimir.'); return; }
+            var itens = v.itens.map(function(i) { return { produto: i.produto, qnt: i.qnt, preco: i.preco, obs: i.obs || '', pedidoEm: '' }; });
+            imprimirHtml(htmlRecibo({ mesa: 'Comanda ' + fmtNum(proximoNumero('VR')) + ' - VR - ' + limparNome(v.nome), tchau: agoraBR(), abertura: agoraBR(), itens: itens, total: vrTotal(), forma: v.forma || 'A definir' }, 'FINAL'), 'Venda rápida');
         }
         function vrVoltar() { var v = estado.vr; if (!v || v.enviando) return; v.confirmando = null; vrDesenhar(); }
         function vrEnviar() {
