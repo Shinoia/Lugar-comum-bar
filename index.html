@@ -1362,7 +1362,7 @@
         }
         function finalizarDia() {
             if (!exigirAdmin()) return;
-            var mesasOcupadas = todasMesas().filter(function(m) { return m.status === 'ocupada' && m.itens.length > 0 && !m.vip; });
+            var mesasOcupadas = todasMesas().filter(function(m) { return m.status === 'ocupada' && m.itens.length > 0 && !m.vip && !mesaTeste(m); }); // comandas de teste abertas não bloqueiam
             if (mesasOcupadas.length > 0) {
                 alert("Não é possível finalizar o dia! Ainda existem mesas abertas.\nVá na aba 📋 Abertas e use \"Encerrar todas\" (senha) se for o caso.");
                 return;
