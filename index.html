@@ -285,13 +285,14 @@
             return t;
         }
 
+        function itemEhCaixa(it) { return String(it.tipo || '').toLowerCase().indexOf('caixa') >= 0; }
         function itemEhCozinha(it) {
             var t = String(it.tipo || 'bar').toLowerCase();
             return t.indexOf('cozinha') >= 0 || t.indexOf('petisco') >= 0 || t.indexOf('comida') >= 0;
         }
         // cor do grupo (bar ou cozinha) da mesa: pronto > preparando > pendente > entregue; branco = sem itens
         function corGrupo(itens, cozinha) {
-            var sts = itens.filter(function(it) { return itemEhCozinha(it) === cozinha; })
+            var sts = itens.filter(function(it) { return !itemEhCaixa(it) && itemEhCozinha(it) === cozinha; })
                            .map(function(it) { return it.statusPreparo || 'pendente'; });
             if (sts.length === 0) return '#fff';
             return corStatus(sts.indexOf('pronto') >= 0 ? 'pronto' : sts.indexOf('preparando') >= 0 ? 'preparando' : sts.indexOf('pendente') >= 0 ? 'pendente' : 'entregue');
@@ -1240,12 +1241,13 @@
                 secao('PAGAMENTOS POR FORMA') + pagamentos + lin('TOTAL RECEBIDO (' + nCom + ' comandas)', brl(totalPag), 'b') +
                 secao('CONSUMO POR MESA') + mesas +
                 vipHtml + abertoHtml +
-                secao('PRODUTOS VENDIDOS') + listaProdutos(d.bar, 'BAR') + listaProdutos(d.cozinha, 'COZINHA') +
+                secao('PRODUTOS VENDIDOS') + listaProdutos(d.bar, 'BAR') + listaProdutos(d.cozinha, 'COZINHA') + (d.caixa && d.caixa.qtd ? listaProdutos(d.caixa, 'CAIXA') : '') +
                 '<hr><div class="c"><b>RESUMO FINAL</b></div><hr>' +
                 ordemF.map(function(k) { var f = d.porForma[k] || { n: 0, valor: 0 }; return lin(esc(k), brl(f.valor)); }).join('') +
                 lin('Itens BAR (' + d.bar.qtd + ')', brl(d.bar.valor)) +
                 lin('Itens COZINHA (' + d.cozinha.qtd + ')', brl(d.cozinha.valor)) +
-                '<hr><div class="r t"><span>VALOR FINAL</span><span>' + brl(d.bar.valor + d.cozinha.valor) + '</span></div>' +
+                (d.caixa && d.caixa.qtd ? lin('Itens CAIXA (' + d.caixa.qtd + ')', brl(d.caixa.valor)) : '') +
+                '<hr><div class="r t"><span>VALOR FINAL</span><span>' + brl(d.bar.valor + d.cozinha.valor + (d.caixa ? d.caixa.valor : 0)) + '</span></div>' +
                 '<div style="height:8mm"></div></body></html>';
         }
         function finalizarDia() {
@@ -1305,11 +1307,17 @@
                         : '') +
                         '<button onclick="event.stopPropagation(); cancelarItem(' + item.idItem + ', ' + item.qnt + ')" title="Cancelar o item" style="background:#fff; border:2px solid #000; padding:0.2rem 0.5rem; font-size:0.75rem;">✕ Cancelar</button>';
 
+                    var ehCx = itemEhCaixa(item), cxEntregue = stPreparo === 'entregue';
+                    var blocoStatus = ehCx
+                        ? '<span class="badge" style="background:' + corStatus(cxEntregue ? 'entregue' : 'pendente') + '; margin-top:2px; display:inline-block;">CAIXA: ' + (cxEntregue ? 'ENTREGUE' : 'LIBERAR AGORA') + '</span>'
+                        : '<span class="badge" style="background:' + corStatus(stPreparo) + '; margin-top:2px; display:inline-block;">Status: ' + stPreparo.toUpperCase() + '</span>';
+                    var botaoCx = (ehCx && !cxEntregue)
+                        ? '<button onclick="event.stopPropagation(); mudarEstadoPorId(' + item.idItem + ', \'entregue\')" style="background:#22c55e; border:2px solid #000; padding:0.3rem 0.6rem; font-weight:800;">✔ Entregue</button>'
+                        : '';
                     listaHtml += '<div class="item-row">' +
                         '<div><strong>' + item.qnt + 'x ' + esc(item.produto) + '</strong><br>' +
-                        '<small>Preço: ' + brl(item.preco) + ' | Subtotal: ' + brl(subtotal) + '</small>' + htmlObs(item.obs, false) + '<br>' +
-                        '<span class="badge" style="background:' + corStatus(stPreparo) + '; margin-top:2px; display:inline-block;">Status: ' + stPreparo.toUpperCase() + '</span></div>' +
-                        '<div style="display:flex; flex-direction:column; gap:0.25rem;">' + botoesCancel + '</div>' +
+                        '<small>Preço: ' + brl(item.preco) + ' | Subtotal: ' + brl(subtotal) + '</small>' + htmlObs(item.obs, false) + '<br>' + blocoStatus + '</div>' +
+                        '<div style="display:flex; flex-direction:column; gap:0.25rem;">' + botaoCx + botoesCancel + '</div>' +
                     '</div>';
                 }
             }
@@ -1359,7 +1367,7 @@
                 for (var b = 0; b < ms[a].itens.length; b++) {
                     var it = ms[a].itens[b], t = (it.tipo || 'bar').toLowerCase();
                     var coz = t.includes('cozinha') || t.includes('petisco') || t.includes('comida');
-                    if (it.statusPreparo !== 'entregue' && coz === ehCozinha) n++;
+                    if (it.statusPreparo !== 'entregue' && !itemEhCaixa(it) && coz === ehCozinha) n++;
                 }
             }
             return n;
@@ -1390,13 +1398,15 @@
                         var textoStatus = m.status === 'ocupada'
                             ? (m.itens.length > 0 ? valorCard + '<br>' + m.itens.length + ' itens' : 'Sem pedidos')
                             : 'Livre';
-                        var corBar = '#fff', corCoz = '#fff';
+                        var corBar = '#fff', corCoz = '#fff', corCx = '';
                         if (m.status === 'ocupada') {
                             corBar = corGrupo(m.itens, false);
                             corCoz = corGrupo(m.itens, true);
+                            var itCx = m.itens.filter(itemEhCaixa);
+                            if (itCx.length) corCx = itCx.every(function(i) { return i.statusPreparo === 'entregue'; }) ? corStatus('entregue') : corStatus('pendente');
                         }
                         return '<div class="mesa-card ' + classeOcupada + ' ' + classeSelecionada + '" data-id="' + esc(m.id) + '" onclick="selecionarMesa(this.getAttribute(\'data-id\'))">' +
-                            '<div style="display: flex; justify-content: space-between; gap: 0.25rem;"><strong style="overflow-wrap:anywhere;">' + esc(nomeMesa(m)) + '</strong><span style="white-space: nowrap;">' + bolinha('bar', corBar) + bolinha('coz', corCoz) + '</span></div>' +
+                            '<div style="display: flex; justify-content: space-between; gap: 0.25rem;"><strong style="overflow-wrap:anywhere;">' + esc(nomeMesa(m)) + '</strong><span style="white-space: nowrap;">' + bolinha('bar', corBar) + bolinha('coz', corCoz) + (corCx ? bolinha('cx', corCx) : '') + '</span></div>' +
                             '<div><div style="font-size: 0.75rem;">' + textoStatus + '</div></div>' +
                         '</div>';
                     }
@@ -1498,7 +1508,7 @@
                                 var tipoItem = (itemMesa.tipo || 'bar').toLowerCase();
                                 var eCozinhaItem = tipoItem.includes('cozinha') || tipoItem.includes('petisco') || tipoItem.includes('comida');
 
-                                if (itemMesa.statusPreparo !== 'entregue' && ((ehCozinha && eCozinhaItem) || (!ehCozinha && !eCozinhaItem))) {
+                                if (itemMesa.statusPreparo !== 'entregue' && !itemEhCaixa(itemMesa) && ((ehCozinha && eCozinhaItem) || (!ehCozinha && !eCozinhaItem))) {
                                     itensKDS.push({
                                         idItem: itemMesa.idItem,
                                         mesa: nomeMesa(mesaObj),
