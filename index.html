@@ -542,33 +542,212 @@
             var box = document.getElementById('sugestoes-pessoa');
             if (box) box.innerHTML = htmlSugestoes(txt);
         }
+        // próximo número da comanda (zera a cada dia: a planilha só traz o dia atual). tipo 'VR' = venda rápida, '' = pessoa
+        function proximoNumero(tipo) {
+            var max = 0, ids = estado.pessoasNovas.slice();
+            (estado.pessoas || []).forEach(function(p) { ids.push(p.id); });
+            (estado.pedidosGlobais || []).forEach(function(p) { if (p && p.mesa) ids.push(String(p.mesa)); });
+            Object.keys(estado.vrOcultas || {}).forEach(function(k) { ids.push(k); });
+            ids.forEach(function(id) {
+                var m = /^Pessoa: Comanda (\d+) - (VR - )?/.exec(String(id));
+                if (!m) return;
+                if (tipo === 'VR' ? !!m[2] : !m[2]) max = Math.max(max, parseInt(m[1], 10));
+            });
+            return max + 1;
+        }
+        function fmtNum(n) { return (n < 10 ? '00' : n < 100 ? '0' : '') + n; }
         function novaPessoa() {
             fecharJanelaPessoa();
             var el = document.createElement('div');
             el.id = 'janela-pessoa';
-            el.style.cssText = 'position:fixed; top:0; left:0; right:0; bottom:0; width:100%; height:100%; background:rgba(0,0,0,0.5); display:flex; align-items:center; justify-content:center; z-index:50; padding:1rem;';
-            el.innerHTML = '<div style="background:#fff; border:3px solid #000; border-radius:0.75rem; padding:1rem; width:100%; max-width:26rem; color:#000;">' +
+            el.style.cssText = 'position:fixed; top:0; left:0; right:0; bottom:0; width:100%; height:100%; background:rgba(0,0,0,0.5); display:flex; align-items:center; justify-content:center; z-index:50; padding:1rem; overflow:auto;';
+            el.innerHTML = '<div style="background:#fff; border:3px solid #000; border-radius:0.75rem; padding:1rem; width:100%; max-width:26rem; color:#000; max-height:100%; overflow:auto;">' +
                 '<h3 style="margin-bottom:0.75rem;">+ Nova Pessoa</h3>' +
-                '<label style="font-size:0.8rem;">Nome (comece a digitar para ver os clientes salvos; VIP = mensalista):</label>' +
-                '<input type="text" id="input-nova-pessoa" maxlength="40" autocomplete="off" style="width:100%; margin:0.25rem 0 0.5rem;" oninput="sugerirPessoas(this.value)" onkeydown="if(event.key===\'Enter\') escolherPessoa(this.value)">' +
-                '<div id="sugestoes-pessoa" style="margin-bottom:0.75rem; max-height:40vh; overflow:auto;">' + htmlSugestoes('') + '</div>' +
+                '<div style="background:#facc15; border:2px solid #000; border-radius:0.5rem; text-align:center; font-weight:800; padding:0.4rem; margin-bottom:0.6rem;">Comanda ' + fmtNum(proximoNumero('')) + '</div>' +
+                '<label style="font-size:0.8rem;">Nome da pessoa * (comece a digitar para ver os clientes salvos)</label>' +
+                '<input type="text" id="input-nova-pessoa" maxlength="40" autocomplete="off" placeholder="Nome" style="width:100%; margin:0.25rem 0 0.4rem;" oninput="sugerirPessoas(this.value)">' +
+                '<div id="sugestoes-pessoa" style="margin-bottom:0.6rem; max-height:30vh; overflow:auto;">' + htmlSugestoes('') + '</div>' +
+                '<label style="font-size:0.8rem;">Telefone * (com DDD)</label>' +
+                '<input type="tel" id="input-telefone" inputmode="numeric" maxlength="16" autocomplete="off" placeholder="Ex.: 11999998888" style="width:100%; margin:0.25rem 0 0.4rem;" onkeydown="if(event.key===\'Enter\') confirmarNovaPessoa()">' +
+                '<div id="erro-pessoa" style="color:#b91c1c; font-size:0.85rem; min-height:1.1rem; margin-bottom:0.4rem;"></div>' +
                 '<div style="display:flex; gap:0.5rem; justify-content:flex-end;">' +
                     '<button type="button" onclick="fecharJanelaPessoa()" style="background:#fff; border:2px solid #000;">Cancelar</button>' +
-                    '<button type="button" onclick="escolherPessoa(document.getElementById(\'input-nova-pessoa\').value)" style="background:#facc15; border:2px solid #000;">Adicionar</button>' +
+                    '<button type="button" onclick="confirmarNovaPessoa()" style="background:#facc15; border:2px solid #000;">Adicionar</button>' +
                 '</div></div>';
             document.body.appendChild(el);
             var inp = document.getElementById('input-nova-pessoa');
             if (inp && inp.focus) inp.focus();
         }
+
+        // ---------- Venda rápida: monta a comanda, escolhe o pagamento e fecha tudo de uma vez ----------
+        function vrForm() {
+            var v = estado.vr; if (!v) return;
+            var s = document.getElementById('vr-produto'), q = document.getElementById('vr-qtd'), o = document.getElementById('vr-obs');
+            if (s) v.sel = s.value; if (q) v.qtd = q.value; if (o) v.obs = o.value;
+            var n1 = document.getElementById('vr-nome'), t1 = document.getElementById('vr-tel');
+            if (n1) v.nome = n1.value; if (t1) v.tel = t1.value;
+            var r1 = document.getElementById('vr-recebido'); if (r1) v.recebido = r1.value;
+        }
+        function vrTotal() { return (estado.vr ? estado.vr.itens : []).reduce(function(t, i) { return t + i.qnt * i.preco; }, 0); }
+        function vendaRapida() {
+            estado.vr = { itens: [], forma: '', sel: '', qtd: 1, obs: '', nome: '', tel: '', recebido: '', confirmando: null, enviando: false };
+            var el = document.createElement('div');
+            el.id = 'janela-vr';
+            el.style.cssText = 'position:fixed; top:0; left:0; right:0; bottom:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:50; padding:1rem; overflow:auto;';
+            document.body.appendChild(el);
+            vrDesenhar();
+        }
+        function vrFechar() {
+            var el = document.getElementById('janela-vr');
+            if (el && el.parentNode) el.parentNode.removeChild(el);
+            estado.vr = null;
+        }
+        function vrDesenhar() {
+            var el = document.getElementById('janela-vr'), v = estado.vr;
+            if (!el || !v) return;
+            var opc = '<option value=""' + (v.sel ? '' : ' selected') + '>— Selecione o produto —</option>' +
+                CARDAPIO.filter(function(p) { return (Number(p.estoque) || 0) > 0; }).map(function(p) {
+                    return '<option value="' + esc(p.nome) + '"' + (v.sel === p.nome ? ' selected' : '') + '>' + esc(p.nome) + ' - ' + brl(p.preco) + '</option>';
+                }).join('');
+            var itens = v.itens.map(function(i, k) {
+                return '<div style="display:flex; justify-content:space-between; align-items:center; gap:0.5rem; padding:0.4rem 0; border-bottom:1px solid rgba(0,0,0,0.25);">' +
+                    '<div><b>' + i.qnt + 'x ' + esc(i.produto) + '</b><br><small>' + brl(i.preco) + ' | Subtotal: ' + brl(i.qnt * i.preco) + (i.obs ? ' | ' + esc(i.obs) : '') + '</small></div>' +
+                    '<button type="button" onclick="vrRemover(' + k + ')" style="background:#fff; border:2px solid #000;">✕</button></div>';
+            }).join('') || '<p style="text-align:center; padding:0.6rem;">Nenhum item adicionado.</p>';
+            var formas = ['Débito', 'Crédito', 'PIX', 'Dinheiro'].map(function(f) {
+                var on = v.forma === f;
+                return '<button type="button" onclick="vrForma(\'' + f + '\')" style="flex:1; min-width:45%; margin:0.15rem; border:2px solid #000; background:' + (on ? '#22c55e' : '#fff') + '; font-weight:' + (on ? '800' : '600') + ';">' + (on ? '✔ ' : '') + f + '</button>';
+            }).join('');
+            el.innerHTML = '<div style="background:#b91c1c; border:3px solid #000; border-radius:0.75rem; padding:1rem; width:100%; max-width:30rem; margin:0 auto; color:#000;">' +
+                '<div style="display:flex; justify-content:space-between; align-items:center;"><h3>🛒 Venda rápida</h3><button type="button" onclick="vrFechar()" style="background:#fff; border:2px solid #000;"' + (v.enviando ? ' disabled' : '') + '>Cancelar</button></div>' +
+                '<div style="background:#facc15; border:2px solid #000; border-radius:0.5rem; text-align:center; font-weight:800; padding:0.6rem; margin:0.6rem 0;">Comanda ' + fmtNum(proximoNumero('VR')) + ' - VR &nbsp;|&nbsp; Total: ' + brl(vrTotal()) + '</div>' +
+                '<div style="background:#ef4444; border-radius:0.5rem; padding:0.75rem; margin-bottom:0.6rem;"><label style="font-size:0.75rem;">Nome *</label><input type="text" id="vr-nome" maxlength="40" value="' + esc(v.nome || '') + '" style="width:100%; margin:0.2rem 0 0.4rem;">' +
+                    '<label style="font-size:0.75rem;">Telefone * (com DDD)</label><input type="tel" id="vr-tel" inputmode="numeric" maxlength="16" value="' + esc(v.tel || '') + '" style="width:100%; margin:0.2rem 0;"></div>' +
+                '<div style="background:#ef4444; border-radius:0.5rem; padding:0.75rem; margin-bottom:0.6rem;">' +
+                    '<label style="font-size:0.75rem;">SELECIONAR PRODUTO</label><select id="vr-produto" style="width:100%; margin:0.2rem 0 0.4rem;">' + opc + '</select>' +
+                    '<label style="font-size:0.75rem;">Qtd Solicitada:</label><input type="number" id="vr-qtd" min="1" value="' + esc(String(v.qtd)) + '" style="width:100%; margin:0.2rem 0 0.4rem; text-align:center;">' +
+                    '<label style="font-size:0.75rem;">Observação:</label><input type="text" id="vr-obs" maxlength="60" value="' + esc(v.obs || '') + '" placeholder="Opcional" style="width:100%; margin:0.2rem 0 0.5rem;">' +
+                    '<button type="button" onclick="vrAdicionar()" style="width:100%; background:#facc15; border:2px solid #000;">Lançar Pedido</button></div>' +
+                '<div style="background:#ef4444; border-radius:0.5rem; padding:0.6rem; margin-bottom:0.6rem;">' + itens + '</div>' +
+                '<div style="background:#fff; border:2px solid #000; border-radius:0.5rem; padding:0.6rem; margin-bottom:0.6rem;"><b>Forma de pagamento *</b><div style="display:flex; flex-wrap:wrap; margin-top:0.3rem;">' + formas + '</div></div>' +
+                (v.forma === 'Dinheiro' ? '<div style="background:#fff; border:2px solid #000; border-radius:0.5rem; padding:0.6rem; margin-bottom:0.6rem;"><label style="font-size:0.8rem;">Valor recebido (R$)</label><input type="text" id="vr-recebido" inputmode="decimal" value="' + esc(v.recebido || '') + '" oninput="vrTroco()" style="width:100%; margin:0.2rem 0;"><div id="vr-troco" style="font-weight:800;">' + vrTrocoTxt() + '</div></div>' : '') +
+                '<div id="vr-erro" style="color:#fff; font-weight:700; min-height:1.1rem; margin-bottom:0.4rem;"></div>' +
+                '<div style="display:flex; gap:0.5rem;"><button type="button" onclick="vrConfirmar(false)" style="flex:1; background:#fca5a5; border:2px solid #000;"' + (v.enviando ? ' disabled' : '') + '>' + (v.enviando ? 'Enviando...' : '✔ Finalizar venda') + '</button>' +
+                '<button type="button" onclick="vrConfirmar(true)" style="flex:1; background:#22c55e; border:2px solid #000;"' + (v.enviando ? ' disabled' : '') + '>🖨️ Finalizar e imprimir</button></div></div>';
+            if (v.confirmando) {
+                var rec = vrValor(v.recebido);
+                el.innerHTML = '<div style="background:#fff; border:3px solid #000; border-radius:0.75rem; padding:1rem; width:100%; max-width:26rem; margin:2rem auto; color:#000; text-align:center;">' +
+                    '<h3>Confirmar pagamento</h3>' +
+                    '<p style="margin:0.6rem 0;">' + esc(v.nome) + ' — ' + v.itens.length + ' item(ns)</p>' +
+                    '<div style="font-size:1.6rem; font-weight:800; margin:0.4rem 0;">' + brl(vrTotal()) + '</div>' +
+                    '<div style="font-weight:800; margin-bottom:0.4rem;">Forma: ' + esc(v.forma) + '</div>' +
+                    (v.forma === 'Dinheiro' && rec >= vrTotal() ? '<div>Recebido: ' + brl(rec) + ' | Troco: <b>' + brl(rec - vrTotal()) + '</b></div>' : '') +
+                    (v.confirmando.imprimir ? '<div style="margin-top:0.4rem;">🖨️ O comprovante será impresso</div>' : '') +
+                    '<div style="display:flex; gap:0.5rem; margin-top:1rem;"><button type="button" onclick="vrVoltar()" style="flex:1; background:#fff; border:2px solid #000;"' + (v.enviando ? ' disabled' : '') + '>Voltar</button>' +
+                    '<button type="button" onclick="vrEnviar()" style="flex:1; background:#22c55e; border:2px solid #000; font-weight:800;"' + (v.enviando ? ' disabled' : '') + '>' + (v.enviando ? 'Enviando...' : '✔ Pagamento recebido') + '</button></div>' +
+                    '<div id="vr-erro" style="color:#b91c1c; font-weight:700; min-height:1.1rem; margin-top:0.5rem;"></div></div>';
+            }
+        }
+        function vrValor(t) { var x = String(t || '').replace(/[^\d,.]/g, ''); if (x.indexOf(',') >= 0) x = x.replace(/\./g, '').replace(',', '.'); return parseFloat(x) || 0; }
+        function vrTrocoTxt() {
+            var v = estado.vr; if (!v) return '';
+            var rec = vrValor(v.recebido), tot = vrTotal();
+            if (!rec) return '';
+            return rec + 0.0001 >= tot ? 'Troco: ' + brl(rec - tot) : 'Faltam ' + brl(tot - rec);
+        }
+        function vrTroco() { vrForm(); var e = document.getElementById('vr-troco'); if (e) e.textContent = vrTrocoTxt(); }
+        function vrErro(t) { var e = document.getElementById('vr-erro'); if (e) e.textContent = t; }
+        function vrAdicionar() {
+            var v = estado.vr; if (!v || v.enviando) return;
+            vrForm();
+            var prod = CARDAPIO.find(function(p) { return p.nome === v.sel; });
+            if (!prod) { vrErro('Selecione um produto na lista antes de lançar.'); return; }
+            var qtd = parseInt(v.qtd, 10) || 0;
+            if (qtd < 1) { vrErro('Informe uma quantidade válida.'); return; }
+            var jaNoCarrinho = v.itens.filter(function(i) { return i.produto === prod.nome; }).reduce(function(t, i) { return t + i.qnt; }, 0);
+            if (qtd + jaNoCarrinho > estoqueDisponivel(prod.nome)) { vrErro('Estoque insuficiente de ' + prod.nome + ': restam ' + (estoqueDisponivel(prod.nome) - jaNoCarrinho) + '.'); return; }
+            v.itens.push({ produto: prod.nome, qnt: qtd, preco: prod.preco, obs: limparObs(v.obs) });
+            v.sel = ''; v.qtd = 1; v.obs = '';
+            vrDesenhar();
+        }
+        function vrRemover(k) { var v = estado.vr; if (!v || v.enviando) return; vrForm(); v.itens.splice(k, 1); vrDesenhar(); }
+        function vrForma(f) { var v = estado.vr; if (!v || v.enviando) return; vrForm(); v.forma = f; vrDesenhar(); }
+        function vrConfirmar(imprimir) {
+            var v = estado.vr; if (!v || v.enviando) return;
+            vrForm();
+            var vnome = limparNome(v.nome), vtel = String(v.tel || '').replace(/\D/g, '');
+            if (vnome.length < 2) { vrErro('Informe o nome.'); return; }
+            if (vtel.length < 8) { vrErro('Informe o telefone com DDD.'); return; }
+            if (!v.itens.length) { vrErro('Adicione pelo menos um produto.'); return; }
+            if (!v.forma) { vrErro('Selecione a forma de pagamento: Débito, Crédito, PIX ou Dinheiro.'); return; }
+            if (v.forma === 'Dinheiro' && vrValor(v.recebido) && vrValor(v.recebido) + 0.0001 < vrTotal()) { vrErro('O valor recebido é menor que o total.'); return; }
+            v.confirmando = { imprimir: imprimir };
+            vrDesenhar();
+        }
+        function vrVoltar() { var v = estado.vr; if (!v || v.enviando) return; v.confirmando = null; vrDesenhar(); }
+        function vrEnviar() {
+            var v = estado.vr; if (!v || v.enviando || !v.confirmando) return;
+            var imprimir = v.confirmando.imprimir;
+            var vnome = limparNome(v.nome), vtel = String(v.tel || '').replace(/\D/g, '');
+            v.enviando = true; vrDesenhar();
+            var d = new Date(), z = function(n) { return (n < 10 ? '0' : '') + n; };
+            var chave = PREFIXO_PESSOA + 'Comanda ' + fmtNum(proximoNumero('VR')) + ' - VR - ' + vnome + ' - ' + vtel + ' - ' + z(d.getHours()) + ':' + z(d.getMinutes());
+            if (!estado.vrOcultas) estado.vrOcultas = {};
+            estado.vrOcultas[chave] = Date.now();   // não aparece em Pessoas/Abertas enquanto fecha
+            var itens = v.itens.slice(), forma = v.forma, total = vrTotal();
+            var cadeia = Promise.resolve();
+            itens.forEach(function(i) {
+                cadeia = cadeia.then(function() {
+                    return fetch(API_URL + '?acao=novo_pedido&mesa=' + encodeURIComponent(chave) + '&produto=' + encodeURIComponent(i.produto) +
+                        '&qnt=' + encodeURIComponent(i.qnt) + (i.obs ? '&obs=' + encodeURIComponent(i.obs) : '')).then(function(res) { return res.json(); })
+                        .then(function(r) { if (!r || r.result !== 'success') throw new Error((r && r.error) || 'Falha ao lançar ' + i.produto); });
+                });
+            });
+            cadeia.then(function() {
+                if (imprimir) {
+                    imprimirHtml(htmlRecibo({ mesa: chave, tchau: agoraBR(), abertura: agoraBR(), itens: itens.map(function(i) { return { produto: i.produto, qnt: i.qnt, preco: i.preco, obs: i.obs || '', pedidoEm: '' }; }), total: total, forma: forma }, 'FINAL'), 'Venda rápida');
+                }
+                vrFechar();
+                fetch(API_URL + '?acao=fechar_mesa&mesa=' + encodeURIComponent(chave) + '&forma=' + encodeURIComponent(forma))
+                    .then(function(res) { return res.json(); })
+                    .then(function(r) {
+                        if (!r || r.result !== 'success') { delete estado.vrOcultas[chave]; alert('A venda foi lançada, mas não foi possível fechar a comanda. Ela aparece em Pessoas para você fechar.'); }
+                        sincronizar();
+                    })
+                    .catch(function() { delete estado.vrOcultas[chave]; sincronizar(); });
+                sincronizar();
+            }).catch(function(e) {
+                delete estado.vrOcultas[chave];
+                if (estado.vr) { estado.vr.enviando = false; estado.vr.confirmando = null; vrDesenhar(); vrErro('Não foi possível enviar: ' + (e && e.message ? e.message : e) + '. Confira a lista e tente de novo.'); }
+                sincronizar();
+            });
+        }
+
         function fecharJanelaPessoa() {
             var el = document.getElementById('janela-pessoa');
             if (el && el.parentNode) el.parentNode.removeChild(el);
         }
+        // tocar num nome da lista só preenche o campo Nome
         function escolherPessoa(valor) {
-            var entrada = limparNome(valor);
-            if (!entrada) return;
+            var campo = document.getElementById('input-nova-pessoa');
+            if (!campo) return;
+            campo.value = limparNome(valor);
+            var sug = document.getElementById('sugestoes-pessoa');
+            if (sug) sug.innerHTML = '';
+            var tel = document.getElementById('input-telefone');
+            if (tel && tel.focus) tel.focus();
+        }
+        function confirmarNovaPessoa() {
+            var erro = document.getElementById('erro-pessoa');
+            function falha(t, id) { if (erro) erro.textContent = t; var c = document.getElementById(id); if (c && c.focus) c.focus(); }
+            var nome = limparNome((document.getElementById('input-nova-pessoa') || {}).value);
+            var tel = String((document.getElementById('input-telefone') || {}).value || '').replace(/\D/g, '');
+            var up = nome.toUpperCase();
+            if (up === 'VIP' || (up.indexOf('VIP-') === 0 && up.length > 4)) { fecharJanelaPessoa(); criarPessoa(nome); return; } // mensalista: segue como antes
+            if (nome.length < 2) return falha('Informe o nome da pessoa.', 'input-nova-pessoa');
+            if (tel.length < 8) return falha('Informe o telefone com DDD (mínimo 8 números).', 'input-telefone');
             fecharJanelaPessoa();
-            criarPessoa(entrada);
+            criarPessoa('Comanda ' + fmtNum(proximoNumero('')) + ' - ' + nome + ' - ' + tel);
         }
         function criarPessoa(entrada) {
             var chave;
@@ -818,10 +997,11 @@
         // Só escondem os itens que já existiam no momento do fechamento; pedido novo na mesma mesa aparece normal.
         function sigItem(p) { return String(p.mesa) + '|' + String(p.produto) + '|' + String(p.pedidoEm || ''); }
         function aplicarFechando(lista) {
-            var f = estado.fechando || {}, ks = Object.keys(f);
-            if (!ks.length) return lista;
+            var f = estado.fechando || {}, ks = Object.keys(f), vo = estado.vrOcultas || {};
+            if (!ks.length && !Object.keys(vo).length) return lista;
             return lista.filter(function(p) {
                 if (p.status === 'fechado') return true;
+                if (vo[String(p.mesa)] && Date.now() - vo[String(p.mesa)] < 180000) return false;
                 for (var i = 0; i < ks.length; i++) { if (f[ks[i]].sigs[sigItem(p)]) return false; }
                 return true;
             });
@@ -1213,7 +1393,7 @@
                     main.innerHTML = '<div class="grid-caixa">' +
                         '<div><h2 style="margin-bottom: 1rem; color:#000;">Selecione uma Mesa</h2><div class="mesas-grid">' + mesasHtml + '</div>' +
                         '<div style="display:flex; justify-content:space-between; align-items:center; margin: 1.5rem 0 1rem;"><h2 style="color:#000;">👤 Pessoas (em pé)</h2>' +
-                        '<button onclick="novaPessoa()" style="background:#facc15; border:2px solid #000;">+ Nova Pessoa</button></div>' +
+                        '<div style="display:flex; gap:0.4rem; flex-wrap:wrap; justify-content:flex-end;"><button onclick="vendaRapida()" style="background:#fff; border:2px solid #000;">🛒 Venda rápida</button><button onclick="novaPessoa()" style="background:#facc15; border:2px solid #000;">+ Nova Pessoa</button></div></div>' +
                         (pessoasHtml ? '<div class="mesas-grid">' + pessoasHtml + '</div>' : '<p style="color:#000; font-size:0.85rem;">Nenhuma pessoa em aberto. Use "+ Nova Pessoa" para lançar pedidos no nome de alguém.</p>') +
                         (vipHtml ? '<h2 style="color:#000; margin: 1.5rem 0 0.5rem;">⭐ VIP (conta mensal)</h2><p style="color:#000; font-size:0.8rem; margin-bottom:0.75rem;">Não entram no fechamento do dia nem no "Encerrar todas".</p><div class="mesas-grid">' + vipHtml + '</div>' : '') +
                         '</div>' +
