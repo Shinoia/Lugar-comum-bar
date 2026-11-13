@@ -1573,7 +1573,7 @@
                         var linhasF = f.itens.map(function(it) {
                             return '<div style="display:flex; justify-content:space-between; gap:0.5rem; font-size:0.85rem;"><span>' + it.qnt + 'x ' + esc(it.produto) + (it.obs ? ' <small>(📝 ' + esc(it.obs) + ')</small>' : '') + (soHora(it.pedidoEm) ? ' <small>às ' + esc(soHora(it.pedidoEm)) + '</small>' : '') + '</span><span>' + brl(it.qnt * it.preco) + '</span></div>';
                         }).join('');
-                        finHtml += '<div class="mesa-card" style="height:auto; gap:0.5rem; cursor:default;">' +
+                        finHtml += '<div class="mesa-card' + (f.teste || f.forma === 'Teste' ? ' teste' : '') + '" style="height:auto; gap:0.5rem; cursor:default;">' +
                             '<div style="display:flex; justify-content:space-between;"><strong>' + (ehVip(f.mesa) ? '⭐ ' : '') + esc(rotuloChave(f.mesa)) + '</strong>' + (f.teste || f.forma === 'Teste' ? etiquetaTeste() : '') + '<strong>' + brl(f.total) + '</strong></div>' +
                             '<small>Aberta: ' + esc(f.abertura) + '<br>Fechada: ' + esc(f.tchau) + (f.forma ? '<br>💳 Pagamento: <b>' + esc(f.forma) + '</b>' : '') + '</small>' +
                             '<div style="display:flex; flex-direction:column; gap:0.25rem;">' + linhasF + '</div>' +
