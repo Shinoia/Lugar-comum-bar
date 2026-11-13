@@ -204,6 +204,7 @@
             finalizadas: [],
             frequentes: [],
             clientes: [],
+            telefones: [],
             usuario: null,
             fechamento: null
         };
@@ -522,6 +523,7 @@
                         }
                         if (data.frequentes) estado.frequentes = data.frequentes;
                         if (data.clientes) estado.clientes = data.clientes;
+                        if (data.telefones) estado.telefones = data.telefones;
                         if (data.usuario) { estado.usuario = data.usuario; estado.versao = data.versao || 'antiga'; atualizarUsuario(); }
                         if (data.pedidos) {
                             limparFechando(data.pedidos);
@@ -1223,6 +1225,19 @@
         }
         function ordemData(t) { var m = String(t).match(/(\d{2})\/(\d{2})\/(\d{4}) (\d{2}):(\d{2}):(\d{2})/); return m ? m[3] + m[2] + m[1] + m[4] + m[5] + m[6] : '0'; }
         function soHora(t) { var m = String(t).match(/\d{2}:\d{2}(:\d{2})?/); return m ? m[0] : ''; }
+        // nome + telefone informados no 1º pedido de uma MESA (aba Telefones), para mostrar ao lado de "Mesa 1.1" em Finalizadas
+        function clienteDaMesaFin(f) {
+            if (ehPessoa(f.mesa) || ehVip(f.mesa)) return '';
+            var ord = function(t) { var m = String(t).match(/(\d{2})\/(\d{2})\/(\d{4}) (\d{2}):(\d{2}):(\d{2})/); return m ? m[3] + m[2] + m[1] + m[4] + m[5] + m[6] : ''; };
+            var de = ord(f.abertura), ate = ord(f.tchau), ach = null;
+            (estado.telefones || []).forEach(function(t) {
+                if (String(t.mesa) !== String(f.mesa)) return;
+                var o = ord(t.t);
+                if ((!de || o >= de) && (!ate || o <= ate)) ach = t;
+            });
+            if (!ach || (!ach.nome && !ach.tel)) return '';
+            return ' <span style="font-weight:normal;">· ' + esc(ach.nome || '') + (ach.tel ? ' 📞 ' + esc(ach.tel) : '') + '</span>';
+        }
         function rotuloChave(k) {
             k = String(k);
             if (ehPessoa(k)) return k.substring(PREFIXO_PESSOA.length);
@@ -1599,7 +1614,7 @@
                             return '<div style="display:flex; justify-content:space-between; gap:0.5rem; font-size:0.85rem;"><span>' + it.qnt + 'x ' + esc(it.produto) + (it.obs ? ' <small>(📝 ' + esc(it.obs) + ')</small>' : '') + (soHora(it.pedidoEm) ? ' <small>às ' + esc(soHora(it.pedidoEm)) + '</small>' : '') + '</span><span>' + brl(it.qnt * it.preco) + '</span></div>';
                         }).join('');
                         finHtml += '<div class="mesa-card' + (f.teste || f.forma === 'Teste' ? ' teste' : '') + '" style="height:auto; gap:0.5rem; cursor:default;">' +
-                            '<div style="display:flex; justify-content:space-between;"><strong>' + (ehVip(f.mesa) ? '⭐ ' : '') + esc(rotuloChave(f.mesa)) + '</strong>' + (f.teste || f.forma === 'Teste' ? etiquetaTeste() : '') + '<strong>' + brl(f.total) + '</strong></div>' +
+                            '<div style="display:flex; justify-content:space-between;"><strong>' + (ehVip(f.mesa) ? '⭐ ' : '') + esc(rotuloChave(f.mesa)) + clienteDaMesaFin(f) + '</strong>' + (f.teste || f.forma === 'Teste' ? etiquetaTeste() : '') + '<strong>' + brl(f.total) + '</strong></div>' +
                             '<small>Aberta: ' + esc(f.abertura) + '<br>Fechada: ' + esc(f.tchau) + (f.forma ? '<br>💳 Pagamento: <b>' + esc(f.forma) + '</b>' : '') + '</small>' +
                             '<div style="display:flex; flex-direction:column; gap:0.25rem;">' + linhasF + '</div>' +
                             '<div style="display:flex; gap:0.5rem;"><button data-k="' + esc(f.k) + '" onclick="imprimirFinalizada(this.getAttribute(\'data-k\'))" style="background:#fff; border:2px solid #000; flex:1;">🖨️ Imprimir</button>' +
