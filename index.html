@@ -1095,6 +1095,33 @@
         }
         function alternarTesteCompleto(on) { if (estado.fechamento) { estado.fechamento.completo = !!on; desenharFechamento(); } }
         function escolherForma(fp) { if (estado.fechamento) { estado.fechamento.forma = fp; desenharFechamento(); } }
+        // ---- só Queen: apagar comandas (cuidado: não dá para desfazer) ----
+        function apagarFinalizada(k) {
+            var c = acharFinalizada(k); if (!c) return;
+            if (!confirm('APAGAR a comanda "' + rotuloChave(c.mesa) + '" (' + brl(c.total) + ') da planilha?\nNão dá para desfazer.')) return;
+            fetch(API_URL + '?acao=apagar_finalizada&mesa=' + encodeURIComponent(c.mesa) + '&tchau=' + encodeURIComponent(c.tchau))
+                .then(function(res) { return res.json(); })
+                .then(function(r) { if (!r || r.result !== 'success') alert((r && r.error) || 'Não foi possível apagar.'); sincronizar(); })
+                .catch(function() { alert('Falha de conexão ao apagar.'); });
+        }
+        function apagarAberta(id) {
+            var m = acharMesa(id); if (!m) return;
+            if (!confirm('APAGAR a comanda aberta "' + nomeMesa(m) + '" com todos os itens?\nOs itens voltam ao estoque. Não dá para desfazer.')) return;
+            var idAlvo = m.pessoa ? m.id : (m.idExibicao || m.id);
+            if (!estado.vrOcultas) estado.vrOcultas = {};
+            estado.vrOcultas[String(idAlvo)] = Date.now();
+            if (m.pessoa) estado.pessoasNovas = estado.pessoasNovas.filter(function(n) { return n !== m.id; });
+            estado.mesaSelecionadaId = null;
+            processarPedidos(); renderizar();
+            fetch(API_URL + '?acao=apagar_aberta&mesa=' + encodeURIComponent(idAlvo))
+                .then(function(res) { return res.json(); })
+                .then(function(r) {
+                    if (!r || r.result !== 'success') { delete estado.vrOcultas[String(idAlvo)]; alert((r && r.error) || 'Não foi possível apagar.'); }
+                    sincronizar();
+                    setTimeout(function() { delete estado.vrOcultas[String(idAlvo)]; }, 8000);
+                })
+                .catch(function() { delete estado.vrOcultas[String(idAlvo)]; alert('Falha de conexão ao apagar.'); sincronizar(); });
+        }
         function fecharJanelaFechamento() {
             var el = document.getElementById('janela-fechamento');
             if (el && el.parentNode) el.parentNode.removeChild(el);
@@ -1301,63 +1328,25 @@
         function usuarioAtualNome() { return USUARIO || ''; }
         function htmlResumoDia(r, fin) {
             var larg = lerConfig('papel', '80') === '58' ? '42mm' : '62mm';
-            var d = r.detalhe || { comandas: [], vip: [], porForma: {}, bar: { qtd: 0, valor: 0, itens: {} }, cozinha: { qtd: 0, valor: 0, itens: {} }, aberto: [] };
+            var d = r.detalhe || { comandas: [], vip: [], porForma: {}, bar: { valor: 0 }, cozinha: { valor: 0 }, caixa: { valor: 0 }, aberto: [] };
             function lin(a, b, cls) { return '<div class="r' + (cls ? ' ' + cls : '') + '"><span>' + a + '</span><span>' + b + '</span></div>'; }
-            function secao(t) { return '<hr><div class="c"><b>' + esc(t) + '</b></div><hr>'; }
-            // 1) pagamentos por forma (sempre mostra as 4 formas)
-            var ordemF = ['Dinheiro', 'PIX', 'Débito', 'Crédito'], totalPag = 0, nCom = 0, pagamentos = '';
-            Object.keys(d.porForma).forEach(function(k) { if (ordemF.indexOf(k) < 0) ordemF.push(k); });
-            ordemF.forEach(function(k) {
-                var f = d.porForma[k] || { n: 0, valor: 0 };
-                totalPag += f.valor; nCom += f.n;
-                pagamentos += lin(esc(k) + ' (' + f.n + ')', brl(f.valor));
-            });
-            // 2) consumo por mesa
-            function blocoComanda(c) {
-                var h = '<div class="m"><b>' + esc(c.mesa) + '</b></div>' +
-                    '<div class="s">abriu ' + esc(soHora(c.abertura)) + ' | fechou ' + esc(soHora(c.fechamento)) + (c.forma ? ' | ' + esc(c.forma) : '') + '</div>';
-                c.itens.forEach(function(it) {
-                    h += lin(it.qnt + 'x ' + esc(it.produto), brl(it.valor));
-                    if (it.obs) h += '<div class="s">* ' + esc(it.obs) + '</div>';
-                });
-                return h + lin('Total ' + esc(c.mesa), brl(c.total), 'b') + '<div style="height:3px"></div>';
-            }
-            var mesas = d.comandas.map(blocoComanda).join('') || '<div>Nenhuma comanda.</div>';
-            var vipHtml = '';
-            if (d.vip.length) {
-                var totVip = 0;
-                d.vip.forEach(function(c) { totVip += c.total; });
-                vipHtml = secao('CONTAS VIP (fora do caixa)') + d.vip.map(blocoComanda).join('') + lin('Total VIP', brl(totVip), 'b');
-            }
-            var abertoHtml = '';
-            if (d.aberto.length) {
-                abertoHtml = secao('ENCERRADAS EM ABERTO (nao pagas)') + d.aberto.map(function(c) { return lin(esc(c.mesa), brl(c.total)); }).join('');
-            }
-            // 3) produtos vendidos
-            function listaProdutos(cat, titulo) {
-                var nomes = Object.keys(cat.itens).sort(function(a, b) { return cat.itens[b].q - cat.itens[a].q; });
-                return '<div><b>' + titulo + '</b></div>' +
-                    (nomes.map(function(n) { return lin(cat.itens[n].q + 'x ' + esc(n), brl(cat.itens[n].v)); }).join('') || '<div>—</div>') +
-                    lin('Total ' + titulo + ' (' + cat.qtd + ' itens)', brl(cat.valor), 'b') + '<div style="height:3px"></div>';
-            }
+            function vf(k) { return (d.porForma[k] || { valor: 0 }).valor || 0; }
+            var totalVendas = 0;
+            Object.keys(d.porForma).forEach(function(k) { totalVendas += d.porForma[k].valor || 0; });
+            var emAberto = 0; (d.aberto || []).forEach(function(c) { emAberto += c.total || 0; });
+            var totVip = 0; (d.vip || []).forEach(function(c) { totVip += c.total || 0; });
             var larguraPag = larg === '42mm' ? '58mm' : '80mm';
             return '<!doctype html><html><head><meta charset="utf-8"><title>Fechamento do dia</title><style>' +
                 '@page{size:' + larguraPag + ' auto;margin:0}' +
-                'body{margin:0;padding:2mm;width:' + larg + ';font-family:"Courier New",monospace;font-size:12px;color:#000}' +
-                '.c{text-align:center}.r{display:flex;justify-content:space-between;gap:4px}.b{font-weight:bold}.s{font-size:10px}.m{margin-top:3px}' +
-                'hr{border:0;border-top:1px dashed #000;margin:4px 0}.t{font-size:15px;font-weight:bold}</style></head><body>' +
-                '<div class="c t">LUGAR COMUM BAR</div><div class="c"><b>FECHAMENTO DO DIA</b></div><hr>' +
-                '<div>' + esc(agoraBR()) + '</div>' + (usuarioAtualNome() ? '<div>Por: ' + esc(usuarioAtualNome()) + '</div>' : '') +
-                secao('PAGAMENTOS POR FORMA') + pagamentos + lin('TOTAL RECEBIDO (' + nCom + ' comandas)', brl(totalPag), 'b') +
-                secao('CONSUMO POR MESA') + mesas +
-                vipHtml + abertoHtml +
-                secao('PRODUTOS VENDIDOS') + listaProdutos(d.bar, 'BAR') + listaProdutos(d.cozinha, 'COZINHA') + (d.caixa && d.caixa.qtd ? listaProdutos(d.caixa, 'CAIXA') : '') +
-                '<hr><div class="c"><b>RESUMO FINAL</b></div><hr>' +
-                ordemF.map(function(k) { var f = d.porForma[k] || { n: 0, valor: 0 }; return lin(esc(k), brl(f.valor)); }).join('') +
-                lin('Itens BAR (' + d.bar.qtd + ')', brl(d.bar.valor)) +
-                lin('Itens COZINHA (' + d.cozinha.qtd + ')', brl(d.cozinha.valor)) +
-                (d.caixa && d.caixa.qtd ? lin('Itens CAIXA (' + d.caixa.qtd + ')', brl(d.caixa.valor)) : '') +
-                '<hr><div class="r t"><span>VALOR FINAL</span><span>' + brl(d.bar.valor + d.cozinha.valor + (d.caixa ? d.caixa.valor : 0)) + '</span></div>' +
+                'body{margin:0;padding:2mm;width:' + larg + ';font-family:"Courier New",monospace;font-size:13px;color:#000}' +
+                '.c{text-align:center}.r{display:flex;justify-content:space-between;gap:4px;margin:2px 0}.b{font-weight:bold}' +
+                'hr{border:0;border-top:1px dashed #000;margin:5px 0}.t{font-size:15px;font-weight:bold}</style></head><body>' +
+                '<div class="c t">FECHAMENTO DE UM LONGO DIA COMUNISTA</div><hr>' +
+                '<div class="c">' + esc(agoraBR()) + '</div>' +
+                '<hr><div class="r t"><span>Vendas total</span><span>' + brl(totalVendas) + '</span></div><hr>' +
+                lin('Pix', brl(vf('PIX'))) + lin('Deb', brl(vf('Débito'))) + lin('Cre', brl(vf('Crédito'))) + lin('Din', brl(vf('Dinheiro'))) +
+                '<hr>' + lin('Em aberto', brl(emAberto)) + lin('Contas VIP (consumo do dia)', brl(totVip)) +
+                '<hr>' + lin('Vendas Cozinha', brl((d.cozinha || {}).valor || 0)) + lin('Vendas Bar', brl((d.bar || {}).valor || 0)) + lin('Vendas Caixa', brl((d.caixa || {}).valor || 0)) +
                 '<div style="height:8mm"></div></body></html>';
         }
         function finalizarDia() {
@@ -1558,7 +1547,8 @@
                             '<div style="display:flex; flex-direction:column; gap:0.25rem;">' + linhasAb + '</div>' +
                             '<div style="display:flex; gap:0.4rem; flex-wrap:wrap;"><button data-id="' + esc(ma.id) + '" onclick="selecionarMesa(this.getAttribute(\'data-id\'))" style="background:#fff; border:2px solid #000; flex:1;">➕ Incluir produtos</button>' +
                             '<button data-id="' + esc(ma.id) + '" onclick="fecharMesa(this.getAttribute(\'data-id\'))" style="background:#f87171; border:2px solid #000; flex:1;">💳 Fechar comanda</button>' +
-                            '<button data-id="' + esc(ma.id) + '" onclick="imprimirAberta(this.getAttribute(\'data-id\'))" title="Imprimir na térmica" style="background:#fff; border:2px solid #000;">🖨️</button></div>' +
+                            '<button data-id="' + esc(ma.id) + '" onclick="imprimirAberta(this.getAttribute(\'data-id\'))" title="Imprimir na térmica" style="background:#fff; border:2px solid #000;">🖨️</button>' +
+                            (souTeste() ? '<button data-id="' + esc(ma.id) + '" onclick="apagarAberta(this.getAttribute(\'data-id\'))" style="background:#7f1d1d; color:#fff; border:2px solid #000;">🗑️ Apagar</button>' : '') + '</div>' +
                         '</div>';
                         if (ma.vip) vipAbHtml += cartaoAb; else abHtml += cartaoAb;
                     }
@@ -1588,7 +1578,8 @@
                             '<small>Aberta: ' + esc(f.abertura) + '<br>Fechada: ' + esc(f.tchau) + (f.forma ? '<br>💳 Pagamento: <b>' + esc(f.forma) + '</b>' : '') + '</small>' +
                             '<div style="display:flex; flex-direction:column; gap:0.25rem;">' + linhasF + '</div>' +
                             '<div style="display:flex; gap:0.5rem;"><button data-k="' + esc(f.k) + '" onclick="imprimirFinalizada(this.getAttribute(\'data-k\'))" style="background:#fff; border:2px solid #000; flex:1;">🖨️ Imprimir</button>' +
-                            '<button data-k="' + esc(f.k) + '" onclick="pdfFinalizada(this.getAttribute(\'data-k\'))" style="background:#fff; border:2px solid #000; flex:1;">📄 PDF (Drive)</button></div>' +
+                            '<button data-k="' + esc(f.k) + '" onclick="pdfFinalizada(this.getAttribute(\'data-k\'))" style="background:#fff; border:2px solid #000; flex:1;">📄 PDF (Drive)</button>' +
+                            (souTeste() && !ehVip(f.mesa) ? '<button data-k="' + esc(f.k) + '" onclick="apagarFinalizada(this.getAttribute(\'data-k\'))" style="background:#7f1d1d; color:#fff; border:2px solid #000;">🗑️ Apagar</button>' : '') + '</div>' +
                         '</div>';
                     });
                     var papel = lerConfig('papel', '80');
