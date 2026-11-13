@@ -64,7 +64,7 @@
 <body>
     <header>
         <div>
-            <h1>☭ Lugar Comum Bar</h1>
+            <h1><span id="icone-foice">☭</span> Lugar Comum Bar</h1>
         </div>
         <div class="nav-buttons">
             <button id="btn-aba-caixa" class="btn-tab active-caixa" onclick="mudarAba('caixa')">🧮 Caixa / Mesas</button>
@@ -756,6 +756,9 @@
             // altura do personagem = altura do botão "Venda rápida"
             var altura = 40, bts = document.getElementsByTagName('button'), b;
             for (b = 0; b < bts.length; b++) { if (String(bts[b].getAttribute('onclick') || '').indexOf('vendaRapida') >= 0 && bts[b].offsetHeight) { altura = bts[b].offsetHeight; break; } }
+            var bc = document.getElementById('btn-aba-caixa'), S = (bc && bc.offsetWidth) ? bc.offsetWidth : 150;   // ferramentas: tamanho da caixa amarela "Caixa / Mesas"
+            var ic = document.getElementById('icone-foice'), icR = ic ? ic.getBoundingClientRect() : { left: 20, top: 10, width: 24, height: 24 };
+            var icX = icR.left + icR.width / 2, icY = icR.top + icR.height / 2, icS = Math.max(16, icR.height);
             var p = altura / 19;                       // 1 "pixel" do boneco
             var BW = 10 * p, BH = 19 * p;              // caixa do corpo (largura, altura)
             var GRAV = altura * 0.03, VEL = Math.max(2, altura * 0.07);
@@ -772,10 +775,10 @@
                 obst = out;
             }
             lerObstaculos();
-            var j = { raf: 0, cabecas: 0, toques: [], fim: false, el: el, h: null };
+            var j = { raf: 0, cabecas: 0, toques: [], fim: false, el: el, h: null, fase: 0, ft: 0, ic: ic };
             jogo = j;
             function novo() {
-                return { x: 20 + Math.random() * (W - 40), y: 0, vx: VEL * (Math.random() < 0.5 ? -1 : 1), vy: 0, solo: false, andar: 0, dir: 1, estado: 'vivo', t: 0, cab: null, sang: [], cor: ['#c0392b', '#2471a3', '#7d3c98', '#b9770e'][Math.floor(Math.random() * 4)] };
+                return { x: 20 + Math.random() * (W - 40), y: 0, vx: VEL * (Math.random() < 0.5 ? -1 : 1), vy: 0, solo: false, andar: 0, dir: 1, estado: 'vivo', t: 0, cab: null, sang: [], cor: '#009c3b' };
             }
             j.h = novo();
             function bate(x, y) { // caixa do corpo com pés em (x,y) bate em algum ícone?
@@ -817,25 +820,35 @@
                 g.fillStyle = '#000'; g.fillRect(x + (dir > 0 ? 0 : -2) * p, y + 2 * p, p, p); g.fillRect(x + (dir > 0 ? 2 : 0) * p, y + 2 * p, p, p);
             }
             function humano(h) {
+                if (h.crush) { g.save(); g.translate(h.x, h.y); g.scale(1.7, 0.16); g.translate(-h.x, -h.y); }
+                humano2(h);
+                if (h.crush) g.restore();
+            }
+            function humano2(h) {
                 var x = Math.round(h.x), y = Math.round(h.y) - 9 * p; // y = centro do corpo (pés em h.y)
                 var perna = (h.estado === 'vivo' && h.solo) ? ((Math.floor(h.andar / 5) % 2) ? 1 : -1) : 0;
-                g.fillStyle = '#3b2a1a';
+                g.fillStyle = '#ffdf00';
                 g.fillRect(x - 3 * p, y + 4 * p + (perna > 0 ? 0 : p), 2 * p, 5 * p - (perna > 0 ? 0 : p));
                 g.fillRect(x + p, y + 4 * p + (perna > 0 ? p : 0), 2 * p, 5 * p - (perna > 0 ? p : 0));
                 g.fillStyle = h.cor; g.fillRect(x - 4 * p, y - 3 * p, 8 * p, 7 * p);
-                g.fillStyle = '#e6c27a'; g.fillRect(x - 4 * p, y + p, 8 * p, p);
-                g.fillStyle = h.cor; g.fillRect(x - 6 * p, y - 3 * p + (perna > 0 ? p : 0), 2 * p, 5 * p); g.fillRect(x + 4 * p, y - 3 * p + (perna > 0 ? 0 : p), 2 * p, 5 * p);
+                g.fillStyle = '#ffdf00'; g.fillRect(x - 4 * p, y + p, 8 * p, p);
+                g.fillStyle = '#ffdf00'; g.fillRect(x - 6 * p, y - 3 * p + (perna > 0 ? p : 0), 2 * p, 5 * p); g.fillRect(x + 4 * p, y - 3 * p + (perna > 0 ? 0 : p), 2 * p, 5 * p);
                 g.fillStyle = '#f0c8a0'; g.fillRect(x - 6 * p, y + 2 * p + (perna > 0 ? p : 0), 2 * p, p); g.fillRect(x + 4 * p, y + 2 * p + (perna > 0 ? 0 : p), 2 * p, p);
-                if (h.estado === 'vivo' || (h.estado === 'corte' && h.t < 8)) cabeca(x, y - 9 * p, h.dir);
+                if (h.estado === 'vivo' || h.estado === 'parado') cabeca(x, y - 9 * p, h.dir);
                 else { g.fillStyle = '#a00'; g.fillRect(x - 2 * p, y - 4 * p, 4 * p, p); }
             }
-            function foice(h) {
-                var t = Math.min(h.t, 8) / 8, x = h.x, y = h.y - BH * 0.85, R = altura * 1.1;
-                var ang = -2.4 + t * 3.8;
+            function foiceDes(x, y, R, ang) {
                 g.save(); g.translate(x, y);
-                g.strokeStyle = '#7a5230'; g.lineWidth = Math.max(3, p * 1.5); g.beginPath(); g.moveTo(Math.cos(ang - 0.9) * R * 1.5, Math.sin(ang - 0.9) * R * 1.5); g.lineTo(Math.cos(ang) * R * 0.2, Math.sin(ang) * R * 0.2); g.stroke();
-                g.strokeStyle = '#dfe6ea'; g.lineWidth = Math.max(4, p * 2.2); g.beginPath(); g.arc(0, 0, R, ang - 0.7, ang + 0.15, false); g.stroke();
-                g.strokeStyle = 'rgba(255,255,255,0.55)'; g.lineWidth = Math.max(2, p); g.beginPath(); g.arc(0, 0, R, ang - 1.4, ang - 0.7, false); g.stroke();
+                g.strokeStyle = '#7a5230'; g.lineWidth = Math.max(3, R * 0.09); g.beginPath(); g.moveTo(Math.cos(ang - 0.9) * R * 1.5, Math.sin(ang - 0.9) * R * 1.5); g.lineTo(Math.cos(ang) * R * 0.2, Math.sin(ang) * R * 0.2); g.stroke();
+                g.strokeStyle = '#dfe6ea'; g.lineWidth = Math.max(4, R * 0.12); g.beginPath(); g.arc(0, 0, R, ang - 0.7, ang + 0.15, false); g.stroke();
+                g.strokeStyle = 'rgba(255,255,255,0.55)'; g.lineWidth = Math.max(2, R * 0.05); g.beginPath(); g.arc(0, 0, R, ang - 1.4, ang - 0.7, false); g.stroke();
+                g.restore();
+            }
+            function martelo(x, y, T, rot) { // cabo para cima, cabeça de ferro embaixo
+                g.save(); g.translate(x, y); g.rotate(rot);
+                g.fillStyle = '#7a5230'; g.fillRect(-T * 0.05, -T * 0.55, T * 0.1, T * 0.8);
+                g.fillStyle = '#c9d1d6'; g.fillRect(-T * 0.3, T * 0.12, T * 0.6, T * 0.26);
+                g.strokeStyle = '#333'; g.lineWidth = Math.max(2, T * 0.025); g.strokeRect(-T * 0.3, T * 0.12, T * 0.6, T * 0.26);
                 g.restore();
             }
             function cortar(h) {
@@ -844,21 +857,45 @@
                 var k; for (k = 0; k < 24; k++) h.sang.push({ x: h.x, y: h.y - BH * 0.8, vx: (Math.random() - 0.5) * p * 1.6, vy: -Math.random() * p * 1.6, v: 40 + Math.random() * 30 });
                 j.cabecas++;
             }
+            function suave(t) { return t < 0 ? 0 : t > 1 ? 1 : t * t * (3 - 2 * t); }
+            function animarFerramentas(h) {
+                var ft = j.ft++, vooFim = 70, k = suave(ft / vooFim), px = h.x, ny = h.y - BH * 0.85;
+                var tam = icS + (S - icS) * k;
+                // foice: vem da esquerda e fica no pescoço; martelo: vem da direita e fica acima do boneco
+                var fx = icX + (px - S * 0.35 - icX) * k, fy = icY + ((ny) - icY) * k - Math.sin(k * 3.14) * H * 0.12;
+                var mx = icX + (px - icX) * k, my = icY + ((h.y - BH - S * 0.55) - icY) * k - Math.sin(k * 3.14) * H * 0.12;
+                var ang = -2.4 + (ft / vooFim) * 12.5;                       // gira enquanto voa
+                if (ft >= vooFim) { // foice corta o pescoço (12 quadros)
+                    var tc = Math.min(1, (ft - vooFim) / 12);
+                    ang = -2.4 + tc * 3.8; fx = px; fy = ny;
+                    if (ft - vooFim === 6 && h.estado === 'parado') cortar(h);
+                    if (tc >= 1) { ang = 1.4; fx = px - S * 0.2; fy = ny; }
+                }
+                foiceDes(fx, fy, tam * 0.55, ang);
+                // martelo: ao chegar, ergue, desce e esmaga
+                var rot = (1 - k) * -9, mTam = tam;
+                if (ft >= vooFim + 14) {
+                    var tm = suave((ft - vooFim - 14) / 10);
+                    rot = -0.5 * (1 - tm); my = (h.y - BH - S * 0.55) + (S * 0.55 + BH - S * 0.38) * tm;
+                    if (tm >= 1 && !h.crush) { h.crush = true; var q; for (q = 0; q < 30; q++) h.sang.push({ x: h.x, y: h.y - 4, vx: (Math.random() - 0.5) * p * 3, vy: -Math.random() * p * 2.2, v: 40 + Math.random() * 30 }); }
+                }
+                martelo(mx, my, mTam, rot);
+            }
             function passo() {
                 var h = j.h, k;
                 g.clearRect(0, 0, W, H);
                 quadro++;
                 if (quadro % 20 === 0) lerObstaculos();
                 if (h.estado === 'vivo') mover(h);
+                else if (h.estado === 'parado') { h.vy += GRAV; h.y += h.vy; var op = bate(h.x, h.y); if (h.y >= H || op) { h.y = op ? op.t : H; h.vy = 0; } }
                 else {
                     h.t++;
                     h.vy += GRAV; h.y += h.vy; if (h.y >= H || bate(h.x, h.y)) { var oo = bate(h.x, h.y); h.y = oo ? oo.t : H; h.vy = 0; }
                     if (h.cab) { h.cab.x += h.cab.vx; h.cab.y += h.cab.vy; h.cab.vy += GRAV; h.cab.rot += 0.3; if (h.cab.y > H - 4 * p) { h.cab.y = H - 4 * p; h.cab.vy = -h.cab.vy * 0.4; h.cab.vx *= 0.7; } }
-                    if (h.t > 140) { j.h = novo(); h = j.h; }
                 }
                 humano(h);
-                if (h.estado === 'corte' && h.t <= 10) foice(h);
-                if (h.cab && h.t >= 8) {
+                if (j.fase >= 1) animarFerramentas(h);
+                if (h.cab) {
                     g.save(); g.translate(h.cab.x, h.cab.y); g.rotate(h.cab.rot); g.translate(-h.cab.x, -h.cab.y);
                     cabeca(h.cab.x, h.cab.y, h.dir);
                     g.restore();
@@ -872,12 +909,16 @@
                 g.fillStyle = '#fff'; g.font = 'bold 14px sans-serif'; g.textAlign = 'left';
                 g.fillText('Cabeças: ' + j.cabecas, 10, H - 10);
                 g.textAlign = 'right'; g.font = '11px sans-serif';
-                g.fillText('toque no boneco  •  3 toques no fundo para sair', W - 10, H - 10);
+                g.fillText(j.fase ? '3 toques na tela para sair' : 'toque no boneco  •  3 toques no fundo para sair', W - 10, H - 10);
                 if (!j.fim) j.raf = (window.requestAnimationFrame || function(f) { return setTimeout(f, 33); })(passo);
             }
             function toque(px, py) {
                 var h = j.h, agora = Date.now();
-                if (h.estado === 'vivo' && Math.abs(px - h.x) < BW * 1.1 && py > h.y - BH - p * 3 && py < h.y + p * 3) { cortar(h); j.toques = []; return; }
+                if (j.fase === 0 && h.estado === 'vivo' && Math.abs(px - h.x) < BW * 1.1 && py > h.y - BH - p * 3 && py < h.y + p * 3) {
+                    h.estado = 'parado'; h.vx = 0; j.fase = 1; j.ft = 0; j.toques = [];
+                    if (ic) ic.style.visibility = 'hidden'; // o ícone ☭ do topo se separa e vai até o boneco
+                    return;
+                }
                 j.toques = j.toques.filter(function(t) { return agora - t < 2000; });
                 j.toques.push(agora);
                 if (j.toques.length >= 3) sairGame();
@@ -899,6 +940,7 @@
             if (!jogo) return;
             jogo.fim = true;
             try { if (window.cancelAnimationFrame) window.cancelAnimationFrame(jogo.raf); } catch (e) {}
+            if (jogo.ic) jogo.ic.style.visibility = 'visible';
             if (jogo.el && jogo.el.parentNode) jogo.el.parentNode.removeChild(jogo.el);
             jogo = null;
         }
