@@ -247,11 +247,27 @@
         function limparNome(n) {
             return String(n || '').replace(/[.|<>&"'`=+@\\]/g, ' ').replace(/\s+/g, ' ').trim().substring(0, 30);
         }
+        // "Comanda 003 - Fernando - 11999998888" -> {num:'003', nome:'Fernando', tel:'11999998888'}
+        function partesPessoa(n) {
+            var m = /^Comanda (\d+) - (.*)$/.exec(String(n));
+            if (!m) return { num: '', nome: String(n), tel: '' };
+            var resto = m[2], t = /^(.*) - (\d{8,})$/.exec(resto);
+            return t ? { num: m[1], nome: t[1], tel: t[2] } : { num: m[1], nome: resto, tel: '' };
+        }
+        function precisaTelefone(m) {
+            if (!m || !m.pessoa || m.vip || (m.itens && m.itens.length)) return false;
+            var pp = partesPessoa(m.nome);
+            return !!pp.num && !pp.tel;
+        }
         function todasMesas() { return estado.mesas.concat(estado.pessoas); }
         function acharMesa(id) { return todasMesas().find(function(m) { return String(m.id) === String(id); }); }
         // nome para mostrar na tela
         function nomeMesa(m) {
-            if (m.pessoa) return (m.vip ? '⭐ ' : '👤 ') + m.nome;
+            if (m.pessoa) {
+                var pp = partesPessoa(m.nome);
+                if (!m.vip && pp.num) return '👤 ' + pp.nome + ' · Comanda ' + pp.num;
+                return (m.vip ? '⭐ ' : '👤 ') + m.nome;
+            }
             var r = m.idExibicao || m.id;
             if (m.status === 'livre' && m.contadorFehamentos > 0) r = m.id + '.' + m.contadorFehamentos;
             return 'Mesa ' + r;
@@ -408,6 +424,8 @@
                 if (qtd && qtd.value) estado.quantidadeCache = qtd.value;
                 var obsEl = document.getElementById('input-obs');
                 if (obsEl) estado.obsCache = obsEl.value;
+                var telEl = document.getElementById('input-tel-pessoa');
+                if (telEl) estado.telCache = telEl.value;
             } catch (err) {}
         }
 
@@ -421,7 +439,7 @@
         // digitando quantidade ou observação: redesenhar fecharia a lista aberta e tiraria o cursor do campo.
         function formEmUso() {
             var ae = document.activeElement;
-            return !!(ae && (ae.id === 'select-produto' || ae.id === 'input-qtd' || ae.id === 'input-obs'));
+            return !!(ae && (ae.id === 'select-produto' || ae.id === 'input-qtd' || ae.id === 'input-obs' || ae.id === 'input-tel-pessoa'));
         }
         function renderizarSeLivre() {
             if (formEmUso()) { estado.renderAdiado = Date.now(); return; }
@@ -512,6 +530,7 @@
             estado.produtoSelecionadoCache = ''; // ao abrir uma comanda, o produto começa em branco
             estado.obsCache = '';
             estado.quantidadeCache = 1;
+            estado.telCache = '';
             renderizar();
         }
 
@@ -748,7 +767,7 @@
             } else if (up.indexOf('VIP-') === 0 && up.length > 4) {
                 chave = up;
             } else {
-                chave = PREFIXO_PESSOA + entrada;
+                chave = PREFIXO_PESSOA + 'Comanda ' + fmtNum(proximoNumero('')) + ' - ' + entrada;
             }
             var chaveMin = chave.toLowerCase();
             var existe = estado.pessoasNovas.some(function(n) { return n.toLowerCase() === chaveMin; }) ||
@@ -777,6 +796,17 @@
             if (qtd > disponivel) { alert('Estoque insuficiente de ' + prod.nome + ': restam ' + disponivel + '.'); return; }
             var mesaObj = acharMesa(estado.mesaSelecionadaId);
             if (!mesaObj) return;
+            if (precisaTelefone(mesaObj)) {
+                var telDig = String(estado.telCache || '').replace(/\D/g, '');
+                if (telDig.length < 8) { alert('Informe o telefone do cliente (com DDD) antes do primeiro pedido.'); var tf = document.getElementById('input-tel-pessoa'); if (tf && tf.focus) tf.focus(); return; }
+                var antigo = mesaObj.id, novoId = antigo + ' - ' + telDig;
+                estado.pessoasNovas = estado.pessoasNovas.map(function(x) { return x === antigo ? novoId : x; });
+                estado.mesaSelecionadaId = novoId;
+                estado.telCache = '';
+                processarPedidos();
+                mesaObj = acharMesa(novoId);
+                if (!mesaObj) return;
+            }
             var idMesaFinal = chaveMesa(mesaObj);
 
             var novo = { 
@@ -1308,6 +1338,7 @@
                     : '<div style="background: #facc15; border: 2px solid #000; padding: 0.5rem; border-radius: 0.5rem; margin-bottom: 1rem; text-align: center;">' +
                         '<strong style="font-size: 1rem;">Total Comanda: ' + brl(valorTotalComanda) + '</strong>' +
                       '</div>') +
+                (precisaTelefone(mesaSel) ? '<div style="background:#fff; border:2px solid #000; border-radius:0.5rem; padding:0.5rem; margin-bottom:0.75rem;"><label style="font-size:0.75rem;">Telefone do cliente * (com DDD) — obrigatório antes do 1º pedido</label><input type="tel" id="input-tel-pessoa" inputmode="numeric" maxlength="16" value="' + esc(estado.telCache || '') + '" placeholder="Ex.: 11999998888" style="width:100%; margin-top:0.25rem;"></div>' : '') +
                 '<div class="form-grupo">' +
                     '<label style="font-size: 0.75rem;">SELECIONAR PRODUTO</label>' +
                     '<select id="select-produto">' + opcoesHtml + '</select>' +
