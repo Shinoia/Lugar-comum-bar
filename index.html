@@ -259,12 +259,18 @@
         // campo de telefone (opcional) antes do 1º pedido: 'pessoa' (grava na chave), 'mesa' (grava na aba Telefones) ou ''
         // nome (só mesas): sugere clientes da aba Clientes e, se o cliente tem telefone lá, preenche o campo
         // clientes com o MESMO nome completo (ex.: 4 "Fernando"): a lista mostra o final do telefone para diferenciar
-        function sufixoTel(c) { return c.tel ? ' <small style="color:#555;">· final ' + esc(String(c.tel).slice(-4)) + '</small>' : ''; }
+        function sufixoTel(c) { return ''; } // (não mostramos mais o final do telefone: o bar não decora os números)
+        // nome sem sobrenome que já existe na lista: sugere sobrenome ou apelido para não confundir clientes
+        function avisoNomeRepetido(txt) {
+            var t = limparNome(txt), q = semAcento(t);
+            if (!q || q.indexOf(' ') >= 0) return '';
+            var existe = estado.clientes.some(function(c) { return semAcento(c.nome) === q; });
+            return existe ? '<div style="background:#fef3c7; border:2px solid #b45309; border-radius:0.5rem; padding:0.4rem 0.5rem; margin-top:0.4rem; font-size:0.8rem; color:#000;">⚠️ Já existe um cliente chamado <b>' + esc(t) + '</b>. Se for outra pessoa, acrescente o <b>sobrenome ou apelido</b> (ex.: ' + esc(t) + ' Silva, ' + esc(t) + ' Barba).</div>' : '';
+        }
         function achaCliente(nome) {
             var q = semAcento(limparNome(nome));
             if (!q) return null;
-            var iguais = estado.clientes.filter(function(c) { return semAcento(c.nome) === q; });
-            return iguais.length === 1 ? iguais[0] : null; // só preenche sozinho se houver um único cliente com esse nome
+            return estado.clientes.find(function(c) { return semAcento(c.nome) === q; }) || null;
         }
         function preencherTelDoCliente(c) {
             var t = document.getElementById('input-tel-pessoa'), ni = document.getElementById('tel-ni');
@@ -280,6 +286,7 @@
             box.innerHTML = lista.length ? '<div style="border:2px solid #000; border-radius:0.5rem; overflow:hidden; margin-top:0.25rem;">' + lista.map(function(c) {
                 return '<button type="button" data-nome="' + esc(c.nome) + '" data-tel="' + esc(c.tel || '') + '" onclick="escolherNomeMesa(this.getAttribute(\'data-nome\'), this.getAttribute(\'data-tel\'))" style="display:block; width:100%; text-align:left; background:#fff; border:0; border-bottom:1px solid #ccc; padding:0.5rem; color:#000;">' + esc(c.nome) + (c.tel ? sufixoTel(c) + ' 📞' : '') + '</button>';
             }).join('') + '</div>' : '';
+            box.innerHTML += avisoNomeRepetido(txt);
             var ex = achaCliente(txt);
             if (ex && ex.tel && !String(estado.telCache || '').trim()) preencherTelDoCliente(ex);
         }
@@ -608,9 +615,10 @@
             if (!limparNome(txt)) return '';
             var lista = filtrarClientes(txt);
             if (!lista.length) return '<div style="font-size:0.8rem; color:#555;">Nenhum cliente com esse nome. Toque em Adicionar para criar.</div>';
+            var aviso = avisoNomeRepetido(txt);
             return '<div style="border:2px solid #000; border-radius:0.5rem; overflow:hidden;">' + lista.map(function(c, i) {
                 return '<button type="button" data-nome="' + esc(c.nome) + '" data-tel="' + esc(c.tel || '') + '" onclick="escolherPessoa(this.getAttribute(\'data-nome\'), this.getAttribute(\'data-tel\'))" style="display:block; width:100%; text-align:left; background:#fff; border:0; ' + (i ? 'border-top:1px solid #ccc; ' : '') + 'padding:0.5rem 0.75rem; border-radius:0; font-size:1rem; color:#000;">' + esc(c.nome) + sufixoTel(c) + (c.n ? ' <small style="color:#666;">(' + c.n + 'x)</small>' : '') + '</button>';
-            }).join('') + '</div>';
+            }).join('') + '</div>' + aviso;
         }
         function sugerirPessoas(txt) {
             var box = document.getElementById('sugestoes-pessoa');
@@ -830,7 +838,7 @@
             fecharJanelaPessoa();
             criarPessoa(entrada);
             // cliente salvo com telefone na aba Clientes: já vem preenchido no campo de telefone da comanda
-            if (tel && tipoCampoTelefone(acharMesa(estado.mesaSelecionadaId)) === 'pessoa') { estado.telCache = String(tel); estado.telNI = false; renderizar(); }
+            if (tel && tipoCampoTelefone(acharMesa(estado.mesaSelecionadaId)) === 'pessoa') { preencherTelDoCliente({ tel: String(tel) }); } // escreve direto no campo (renderizar() apagaria: ele relê o campo vazio)
         }
         function criarPessoa(entrada) {
             var chave;
