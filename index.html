@@ -218,9 +218,7 @@
         };
         var PREFIXO_PESSOA = 'Pessoa: ';
 
-        for (var i = 1; i <= 8; i++) {
-            estado.mesas.push({ id: i, status: 'livre', itens: [], contadorFehamentos: 0 });
-        }
+        estado.mesasNovas = []; // números de comanda digitados em "+ Nova comanda" que ainda não receberam pedido
 
         var CORES_STATUS = { pendente: '#f472b6', preparando: '#f97316', pronto: '#4ade80', entregue: '#facc15' };
         function corStatus(st) { return CORES_STATUS[st] || '#fff'; }
@@ -327,7 +325,7 @@
             }
             var r = m.idExibicao || m.id;
             if (m.status === 'livre' && m.contadorFehamentos > 0) r = m.id + '.' + m.contadorFehamentos;
-            return 'Mesa ' + r;
+            return 'Comanda ' + r;
         }
         // identificador gravado na coluna A da planilha para novos pedidos
         function chaveMesa(m) {
@@ -396,6 +394,20 @@
 
         function processarPedidos() {
             try {
+                // comandas (mesas) existem só enquanto abertas: as que têm pedidos + as recém-criadas
+                var idsMesa = {};
+                estado.mesasNovas.forEach(function(n) { idsMesa[String(n)] = true; });
+                for (var q = 0; q < estado.pedidosGlobais.length; q++) {
+                    var pq = estado.pedidosGlobais[q];
+                    if (!pq || !pq.mesa || ehPessoa(pq.mesa) || ehVip(pq.mesa)) continue;
+                    var bq = String(pq.mesa).split('.')[0];
+                    if (/^\d+$/.test(bq)) idsMesa[String(parseInt(bq, 10))] = true;
+                }
+                var antigas = estado.mesas;
+                estado.mesas = Object.keys(idsMesa).map(function(id) {
+                    var ex = antigas.find(function(m) { return String(m.id) === id; });
+                    return ex || { id: parseInt(id, 10), status: 'livre', itens: [], contadorFehamentos: 0 };
+                }).sort(function(a, b) { return a.id - b.id; });
                 for (var i = 0; i < estado.mesas.length; i++) {
                     estado.mesas[i].itens = [];
                     estado.mesas[i].status = 'livre';
@@ -485,6 +497,14 @@
                         mObj.contadorFehamentos = contagemFechamentos[mId];
                     }
                 }
+                // comanda recém-criada que já recebeu pedido deixa de ser "nova"; as fechadas e vazias somem da tela
+                estado.mesasNovas = estado.mesasNovas.filter(function(n) {
+                    var mm = estado.mesas.find(function(m) { return String(m.id) === String(n); });
+                    return mm && mm.status !== 'ocupada';
+                });
+                estado.mesasVisiveis = estado.mesas.filter(function(m) {
+                    return m.status === 'ocupada' || estado.mesasNovas.some(function(n) { return String(n) === String(m.id); });
+                });
             } catch (err) {
                 console.log("Erro ao processar pedidos:", err);
             }
@@ -673,6 +693,51 @@
             return 'T' + fmtNum(max + 1);
         }
         function fmtNum(n) { return (n < 10 ? '00' : n < 100 ? '0' : '') + n; }
+        // ---------- + Nova comanda: o atendente digita o número da comanda (cartão físico) ----------
+        function numeroEmUso(n) {
+            var achou = false;
+            todasMesas().forEach(function(m) {
+                if (m.status !== 'ocupada' && !(estado.mesasNovas || []).some(function(x) { return String(x) === String(m.id); })) return;
+                if (m.vip) return;
+                var num = m.pessoa ? String(partesPessoa(m.nome).num).replace(/^T/, '') : String(m.id);
+                if (num && parseInt(num, 10) === n && !(m.pessoa && /^Comanda T?\d+ - VR - /.test(m.nome))) achou = true;
+            });
+            return achou;
+        }
+        function novaComanda() {
+            var old = document.getElementById('janela-comanda'); if (old) old.parentNode.removeChild(old);
+            var el = document.createElement('div');
+            el.id = 'janela-comanda';
+            el.style.cssText = 'position:fixed; top:0; left:0; right:0; bottom:0; width:100%; height:100%; background:rgba(0,0,0,0.5); display:flex; align-items:center; justify-content:center; z-index:50; padding:1rem;';
+            el.innerHTML = '<div style="background:#fff; border:3px solid #000; border-radius:0.75rem; padding:1rem; width:100%; max-width:22rem; color:#000;">' +
+                '<h3 style="margin-bottom:0.75rem;">+ Nova comanda</h3>' +
+                '<label style="font-size:0.8rem;">Número da comanda:</label>' +
+                '<input type="tel" inputmode="numeric" id="input-num-comanda-nova" maxlength="4" autocomplete="off" style="width:100%; margin:0.25rem 0 0.5rem; font-size:1.3rem; text-align:center;" onkeydown="if(event.key===\'Enter\') criarComanda()">' +
+                '<div id="erro-comanda" style="color:#b91c1c; font-weight:700; min-height:1.1rem; margin-bottom:0.5rem;"></div>' +
+                '<div style="display:flex; gap:0.5rem; justify-content:flex-end;">' +
+                    '<button type="button" onclick="fecharJanelaComanda()" style="background:#fff; border:2px solid #000;">Cancelar</button>' +
+                    '<button type="button" onclick="criarComanda()" style="background:#facc15; border:2px solid #000;">Abrir</button>' +
+                '</div></div>';
+            document.body.appendChild(el);
+            var inp = document.getElementById('input-num-comanda-nova'); if (inp && inp.focus) inp.focus();
+        }
+        function fecharJanelaComanda() { var el = document.getElementById('janela-comanda'); if (el && el.parentNode) el.parentNode.removeChild(el); }
+        function criarComanda() {
+            var inp = document.getElementById('input-num-comanda-nova'), er = document.getElementById('erro-comanda');
+            var n = parseInt(String(inp ? inp.value : '').replace(/\D/g, ''), 10);
+            if (!n || n < 1) { if (er) er.textContent = 'Digite o número da comanda.'; return; }
+            if (numeroEmUso(n)) { if (er) er.textContent = 'A comanda ' + n + ' já está aberta.'; return; }
+            fecharJanelaComanda();
+            if (!estado.mesasNovas.some(function(x) { return String(x) === String(n); })) estado.mesasNovas.push(n);
+            processarPedidos();
+            selecionarMesa(n);
+            renderizar();
+        }
+        function removerComandaVazia(id) {
+            estado.mesasNovas = estado.mesasNovas.filter(function(x) { return String(x) !== String(id); });
+            if (String(estado.mesaSelecionadaId) === String(id)) estado.mesaSelecionadaId = null;
+            processarPedidos(); renderizar();
+        }
         function novaPessoa() {
             fecharJanelaPessoa();
             var el = document.createElement('div');
@@ -680,6 +745,8 @@
             el.style.cssText = 'position:fixed; top:0; left:0; right:0; bottom:0; width:100%; height:100%; background:rgba(0,0,0,0.5); display:flex; align-items:center; justify-content:center; z-index:50; padding:1rem;';
             el.innerHTML = '<div style="background:#fff; border:3px solid #000; border-radius:0.75rem; padding:1rem; width:100%; max-width:26rem; color:#000;">' +
                 '<h3 style="margin-bottom:0.75rem;">+ Nova Pessoa</h3>' +
+                '<label style="font-size:0.8rem;">Número da comanda:</label>' +
+                '<input type="tel" inputmode="numeric" id="input-num-comanda" maxlength="4" autocomplete="off" style="width:100%; margin:0.25rem 0 0.5rem; font-size:1.2rem; text-align:center;">' +
                 '<label style="font-size:0.8rem;">Nome (comece a digitar para ver os clientes salvos; VIP = mensalista):</label>' +
                 '<input type="text" id="input-nova-pessoa" maxlength="40" autocomplete="off" style="width:100%; margin:0.25rem 0 0.5rem;" oninput="sugerirPessoas(this.value)" onkeydown="if(event.key===\'Enter\') escolherPessoa(this.value)">' +
                 '<div id="sugestoes-pessoa" style="margin-bottom:0.75rem; max-height:40vh; overflow:auto;">' + htmlSugestoes('') + '</div>' +
@@ -918,6 +985,14 @@
         function escolherPessoa(valor, tel) {
             var entrada = limparNome(valor);
             if (!entrada) return;
+            var ehVipEnt = entrada.toUpperCase() === 'VIP' || entrada.toUpperCase().indexOf('VIP-') === 0;
+            if (!ehVipEnt) {
+                var cn = document.getElementById('input-num-comanda');
+                var nn = parseInt(String(cn ? cn.value : '').replace(/\D/g, ''), 10);
+                if (!nn || nn < 1) { alert('Digite o número da comanda.'); if (cn && cn.focus) cn.focus(); return; }
+                if (numeroEmUso(nn)) { alert('A comanda ' + nn + ' já está aberta.'); if (cn && cn.focus) cn.focus(); return; }
+                estado.numComandaNova = (souTeste() ? 'T' : '') + fmtNum(nn);
+            }
             if (!tel) { var cl = achaCliente(entrada); if (cl && cl.tel) tel = cl.tel; } // nome digitado por inteiro e igual a um cliente salvo
             fecharJanelaPessoa();
             criarPessoa(entrada);
@@ -966,7 +1041,8 @@
             } else if (up.indexOf('VIP-') === 0 && up.length > 4) {
                 chave = up;
             } else {
-                chave = PREFIXO_PESSOA + 'Comanda ' + rotuloNumero('') + ' - ' + entrada;
+                chave = PREFIXO_PESSOA + 'Comanda ' + (estado.numComandaNova || rotuloNumero('')) + ' - ' + entrada;
+                estado.numComandaNova = '';
             }
             var chaveMin = chave.toLowerCase();
             var existe = estado.pessoasNovas.some(function(n) { return n.toLowerCase() === chaveMin; }) ||
@@ -1368,7 +1444,7 @@
             k = String(k);
             if (ehPessoa(k)) return k.substring(PREFIXO_PESSOA.length);
             if (ehVip(k)) return k;
-            return 'Mesa ' + k;
+            return 'Comanda ' + k;
         }
         function mudarPapel(v) { gravarConfig('papel', v); }
         function mudarAutoImp(el) { gravarConfig('autoimp', el.checked ? '1' : '0'); }
@@ -1671,7 +1747,7 @@
                     if (mesaSel) {
                         lateral = htmlPainelMesa(mesaSel);
                     } else {
-                        lateral = '<div class="painel-lateral" style="justify-content: center; align-items: center; text-align: center;"><p>👆 Clique em uma mesa ao lado para gerenciar.</p></div>';
+                        lateral = '<div class="painel-lateral" style="justify-content: center; align-items: center; text-align: center;"><p>👆 Clique em uma comanda ao lado para gerenciar.</p></div>';
                     }
 
                     function cardHtml(m) {
@@ -1690,13 +1766,15 @@
                             var itCx = m.itens.filter(itemEhCaixa);
                             if (itCx.length) corCx = itCx.every(function(i) { return i.statusPreparo === 'entregue'; }) ? corStatus('entregue') : corStatus('pendente');
                         }
+                        var xVazia = (!m.pessoa && m.status !== 'ocupada') ? '<button type="button" onclick="event.stopPropagation(); removerComandaVazia(' + Number(m.id) + ')" title="Remover" style="padding:0 0.4rem; background:#fff; border:2px solid #000;">✖</button>' : '';
                         return '<div class="mesa-card ' + classeOcupada + ' ' + classeSelecionada + '" data-id="' + esc(m.id) + '" onclick="selecionarMesa(this.getAttribute(\'data-id\'))">' +
                             '<div style="display: flex; justify-content: space-between; gap: 0.25rem;"><div><strong style="overflow-wrap:anywhere;">' + esc(nomeMesa(m)) + '</strong>' + clienteDaMesaAberta(m) + '</div>' + (mesaTeste(m) ? etiquetaTeste() : '') + '<span style="white-space: nowrap;">' + bolinha('bar', corBar) + bolinha('coz', corCoz) + (corCx ? bolinha('cx', corCx) : '') + '</span></div>' +
-                            '<div><div style="font-size: 0.75rem;">' + textoStatus + '</div></div>' +
+                            '<div><div style="font-size: 0.75rem;">' + textoStatus + '</div>' + xVazia + '</div>' +
                         '</div>';
                     }
                     var mesasHtml = '';
-                    for (var mIdx = 0; mIdx < estado.mesas.length; mIdx++) mesasHtml += cardHtml(estado.mesas[mIdx]);
+                    var visiveis = estado.mesasVisiveis || [];
+                    for (var mIdx = 0; mIdx < visiveis.length; mIdx++) mesasHtml += cardHtml(visiveis[mIdx]);
                     var pessoasHtml = '';
                     var vipHtml = '';
                     for (var pIdx = 0; pIdx < estado.pessoas.length; pIdx++) {
@@ -1705,10 +1783,8 @@
                     }
 
                     main.innerHTML = '<div class="grid-caixa">' +
-                        '<div><h2 style="margin-bottom: 1rem; color:#000;">Selecione uma Mesa</h2><div class="mesas-grid">' + mesasHtml + '</div>' +
-                        '<div style="display:flex; justify-content:space-between; align-items:center; margin: 1.5rem 0 1rem;"><h2 style="color:#000;">👤 Pessoas (em pé)</h2>' +
-                        '<div style="display:flex; gap:0.4rem; flex-wrap:wrap; justify-content:flex-end;"><button onclick="vendaRapida()" style="background:#fff; border:2px solid #000;">🛒 Venda rápida</button><button onclick="novaPessoa()" style="background:#facc15; border:2px solid #000;">+ Nova Pessoa</button></div></div>' +
-                        (pessoasHtml ? '<div class="mesas-grid">' + pessoasHtml + '</div>' : '<p style="color:#000; font-size:0.85rem;">Nenhuma pessoa em aberto. Use "+ Nova Pessoa" para lançar pedidos no nome de alguém.</p>') +
+                        '<div><div style="display:flex; gap:0.4rem; flex-wrap:wrap; margin-bottom:1rem;"><button onclick="novaComanda()" style="background:#facc15; border:2px solid #000;">+ Nova comanda</button><button onclick="novaPessoa()" style="background:#facc15; border:2px solid #000;">+ Nova Pessoa</button><button onclick="vendaRapida()" style="background:#fff; border:2px solid #000;">🛒 Venda rápida</button></div>' +
+                        ((mesasHtml || pessoasHtml) ? '<div class="mesas-grid">' + mesasHtml + pessoasHtml + '</div>' : '<p style="color:#000; font-size:0.9rem;">Nenhuma comanda aberta. Use "+ Nova comanda" (digite o número da comanda) ou "+ Nova Pessoa" para começar.</p>') +
                         (vipHtml ? '<h2 style="color:#000; margin: 1.5rem 0 0.5rem;">⭐ VIP (conta mensal)</h2><p style="color:#000; font-size:0.8rem; margin-bottom:0.75rem;">Não entram no fechamento do dia nem no "Encerrar todas".</p><div class="mesas-grid">' + vipHtml + '</div>' : '') +
                         '</div>' +
                         lateral +
