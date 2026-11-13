@@ -875,13 +875,13 @@
                 foiceDes(fx, fy, tam * 0.55, ang);
                 // martelo: fica no ícone enquanto a foice trabalha; depois de cortar a cabeça, cai direto em cima do boneco
                 var agora = Date.now();
-                if (!j.tCorte || agora - j.tCorte < 13000) martelo(icX, icY, icS * 1.4, 0);   // espera 13 s depois do corte
+                if (!j.tCorte || agora - j.tCorte < 4000) martelo(icX, icY, icS * 1.4, 0);   // espera 4 s depois do corte
                 else {
                     if (!j.quedaF) j.quedaF = 0;
                     var tm = Math.min(1, (j.quedaF++) / 14), y0 = -S, y1 = h.y - S * 0.38;
                     martelo(h.x, y0 + (y1 - y0) * tm * tm, S, 0);
                     if (tm >= 1 && !h.crush) { h.crush = true; j.tCrush = agora; var q; for (q = 0; q < 30; q++) h.sang.push({ x: h.x, y: h.y - 4, vx: (Math.random() - 0.5) * p * 3, vy: -Math.random() * p * 2.2, v: 40 + Math.random() * 30 }); }
-                    if (h.crush && agora - j.tCrush >= 10000) { // 10 s depois do martelo caído: o jogo reinicia
+                    if (h.crush && agora - j.tCrush >= 3000) { // 3 s depois do martelo caído: o jogo reinicia
                         j.h = novo(); j.fase = 0; j.ft = 0; j.tCorte = 0; j.quedaF = 0; j.tCrush = 0; j.toques = [];
                         if (ic) ic.style.visibility = 'visible';
                     }
