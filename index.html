@@ -712,54 +712,19 @@
             });
             return achou;
         }
-        function novaComanda() {
-            var old = document.getElementById('janela-comanda'); if (old) old.parentNode.removeChild(old);
-            var el = document.createElement('div');
-            el.id = 'janela-comanda';
-            el.style.cssText = 'position:fixed; top:0; left:0; right:0; bottom:0; width:100%; height:100%; background:rgba(0,0,0,0.5); display:flex; align-items:center; justify-content:center; z-index:50; padding:1rem;';
-            el.innerHTML = '<div style="background:#fff; border:3px solid #000; border-radius:0.75rem; padding:1rem; width:100%; max-width:26rem; color:#000;">' +
-                '<h3 style="margin-bottom:0.75rem;">+ Nova comanda</h3>' +
-                '<label style="font-size:0.8rem;">Número da comanda:</label>' +
-                '<input type="tel" inputmode="numeric" id="input-num-comanda-nova" maxlength="4" autocomplete="off" oninput="this.value = this.value.replace(/\\D/g, \'\')" style="width:100%; margin:0.25rem 0 0.5rem; font-size:1.2rem; text-align:center;">' +
-                '<label style="font-size:0.8rem;">Nome da pessoa (comece a digitar para ver os clientes salvos):</label>' +
-                '<input type="text" id="input-nome-comanda" maxlength="30" autocomplete="off" style="width:100%; margin:0.25rem 0 0.5rem;" oninput="comandaSugerir(this.value)" onkeydown="if(event.key===\'Enter\') criarComanda()">' +
-                '<div id="sug-comanda" style="margin-bottom:0.5rem; max-height:35vh; overflow:auto;"></div>' +
-                '<div id="erro-comanda" style="color:#b91c1c; font-weight:700; min-height:1.1rem; margin-bottom:0.5rem;"></div>' +
-                '<div style="display:flex; gap:0.5rem; justify-content:flex-end;">' +
-                    '<button type="button" onclick="fecharJanelaComanda()" style="background:#fff; border:2px solid #000;">Cancelar</button>' +
-                    '<button type="button" onclick="criarComanda()" style="background:#facc15; border:2px solid #000;">Abrir</button>' +
-                '</div></div>';
-            document.body.appendChild(el);
-            var inp = document.getElementById('input-num-comanda-nova'); if (inp && inp.focus) inp.focus();
-        }
-        function comandaSugerir(txt) {
-            var box = document.getElementById('sug-comanda'); if (!box) return;
-            var lista = limparNome(txt) ? filtrarClientes(txt) : [];
-            box.innerHTML = lista.length ? '<div style="border:2px solid #000; border-radius:0.5rem; overflow:hidden;">' + lista.map(function(c) {
-                return '<button type="button" data-nome="' + esc(c.nome) + '" onclick="comandaEscolher(this.getAttribute(\'data-nome\'))" style="display:block; width:100%; text-align:left; background:#fff; border:0; border-bottom:1px solid #ccc; padding:0.5rem; color:#000;">' + esc(c.nome) + (c.tel ? ' 📞' : '') + '</button>';
-            }).join('') + '</div>' : '';
-        }
-        function comandaEscolher(nome) {
-            var n = document.getElementById('input-nome-comanda'); if (n) n.value = nome;
-            var box = document.getElementById('sug-comanda'); if (box) box.innerHTML = '';
-        }
-        function fecharJanelaComanda() { var el = document.getElementById('janela-comanda'); if (el && el.parentNode) el.parentNode.removeChild(el); }
-        function criarComanda() {
-            var inp = document.getElementById('input-num-comanda-nova'), er = document.getElementById('erro-comanda');
-            var n = parseInt(String(inp ? inp.value : '').replace(/\D/g, ''), 10);
-            if (!n || n < 1) { if (er) er.textContent = 'Digite o número da comanda.'; return; }
-            if (numeroEmUso(n)) { if (er) er.textContent = 'A comanda ' + n + ' já está aberta.'; return; }
-            var nomeIn = document.getElementById('input-nome-comanda'), nomeC = limparNome(nomeIn ? nomeIn.value : '');
-            fecharJanelaComanda();
+        // + Nova comanda (única): número da comanda + nome (opcional). Também aceita VIP e o segredo do jogo.
+        function novaComanda() { novaPessoa(); }
+        function confirmarNovaComanda() {
+            var nomeIn = document.getElementById('input-nova-pessoa'), nome = limparNome(nomeIn ? nomeIn.value : '');
+            if (nome) { escolherPessoa(nome); return; }
+            var cn = document.getElementById('input-num-comanda');
+            var n = parseInt(String(cn ? cn.value : '').replace(/\D/g, ''), 10);
+            if (!n || n < 1) { alert('Digite o número da comanda.'); if (cn && cn.focus) cn.focus(); return; }
+            if (numeroEmUso(n)) { alert('A comanda ' + n + ' já está aberta.'); if (cn && cn.focus) cn.focus(); return; }
+            fecharJanelaPessoa();
             if (!estado.mesasNovas.some(function(x) { return String(x) === String(n); })) estado.mesasNovas.push(n);
             processarPedidos();
             selecionarMesa(n);
-            if (nomeC) { // nome digitado: vai para o campo da comanda e, se o cliente já tem telefone na planilha, preenche sozinho
-                estado.nomeMesaCache = nomeC;
-                var nmEl = document.getElementById('input-nome-mesa'); if (nmEl) nmEl.value = nomeC;   // escreve direto no campo (renderizar() releria o campo vazio)
-                var clc = achaCliente(nomeC);
-                if (clc && clc.tel) preencherTelDoCliente({ tel: String(clc.tel) });
-            }
         }
         function removerComandaVazia(id) {
             estado.mesasNovas = estado.mesasNovas.filter(function(x) { return String(x) !== String(id); });
@@ -767,7 +732,7 @@
             processarPedidos(); renderizar();
         }
 
-        // ---------- GAME (segredo): em "+ Nova Pessoa" digite 1337 no número e GAME no nome ----------
+        // ---------- GAME (segredo): em "+ Nova comanda" digite 1337 no número e GAME no nome ----------
         var jogo = null;
         function iniciarGame() {
             if (jogo) return;
@@ -1143,15 +1108,15 @@
             el.id = 'janela-pessoa';
             el.style.cssText = 'position:fixed; top:0; left:0; right:0; bottom:0; width:100%; height:100%; background:rgba(0,0,0,0.5); display:flex; align-items:center; justify-content:center; z-index:50; padding:1rem;';
             el.innerHTML = '<div style="background:#fff; border:3px solid #000; border-radius:0.75rem; padding:1rem; width:100%; max-width:26rem; color:#000;">' +
-                '<h3 style="margin-bottom:0.75rem;">+ Nova Pessoa</h3>' +
+                '<h3 style="margin-bottom:0.75rem;">+ Nova comanda</h3>' +
                 '<label style="font-size:0.8rem;">Número da comanda:</label>' +
                 '<input type="tel" inputmode="numeric" id="input-num-comanda" maxlength="4" autocomplete="off" oninput="this.value = this.value.replace(/\\D/g, \'\')" style="width:100%; margin:0.25rem 0 0.5rem; font-size:1.2rem; text-align:center;">' +
-                '<label style="font-size:0.8rem;">Nome (comece a digitar para ver os clientes salvos; VIP = mensalista):</label>' +
-                '<input type="text" id="input-nova-pessoa" maxlength="40" autocomplete="off" style="width:100%; margin:0.25rem 0 0.5rem;" oninput="sugerirPessoas(this.value)" onkeydown="if(event.key===\'Enter\') escolherPessoa(this.value)">' +
+                '<label style="font-size:0.8rem;">Nome (opcional; comece a digitar para ver os clientes salvos; VIP = mensalista):</label>' +
+                '<input type="text" id="input-nova-pessoa" maxlength="40" autocomplete="off" style="width:100%; margin:0.25rem 0 0.5rem;" oninput="sugerirPessoas(this.value)" onkeydown="if(event.key===\'Enter\') confirmarNovaComanda()">' +
                 '<div id="sugestoes-pessoa" style="margin-bottom:0.75rem; max-height:40vh; overflow:auto;">' + htmlSugestoes('') + '</div>' +
                 '<div style="display:flex; gap:0.5rem; justify-content:flex-end;">' +
                     '<button type="button" onclick="fecharJanelaPessoa()" style="background:#fff; border:2px solid #000;">Cancelar</button>' +
-                    '<button type="button" onclick="escolherPessoa(document.getElementById(\'input-nova-pessoa\').value)" style="background:#facc15; border:2px solid #000;">Adicionar</button>' +
+                    '<button type="button" onclick="confirmarNovaComanda()" style="background:#facc15; border:2px solid #000;">Abrir</button>' +
                 '</div></div>';
             document.body.appendChild(el);
             var inp = document.getElementById('input-nova-pessoa');
@@ -2251,8 +2216,8 @@
                     }
 
                     main.innerHTML = '<div class="grid-caixa">' +
-                        '<div><div style="display:flex; gap:0.4rem; flex-wrap:wrap; margin-bottom:1rem;"><button onclick="novaComanda()" style="background:#facc15; border:2px solid #000;">+ Nova comanda</button><button onclick="novaPessoa()" style="background:#facc15; border:2px solid #000;">+ Nova Pessoa</button><button onclick="vendaRapida()" style="background:#fff; border:2px solid #000;">🛒 Venda rápida</button></div>' +
-                        ((mesasHtml || pessoasHtml) ? '<div class="grid-cartoes">' + mesasHtml + pessoasHtml + '</div>' : '<p style="color:#000; font-size:0.9rem;">Nenhuma comanda aberta. Use "+ Nova comanda" (digite o número da comanda) ou "+ Nova Pessoa" para começar.</p>') +
+                        '<div><div style="display:flex; gap:0.4rem; flex-wrap:wrap; margin-bottom:1rem;"><button onclick="novaComanda()" style="background:#facc15; border:2px solid #000;">+ Nova comanda</button><button onclick="vendaRapida()" style="background:#fff; border:2px solid #000;">🛒 Venda rápida</button></div>' +
+                        ((mesasHtml || pessoasHtml) ? '<div class="grid-cartoes">' + mesasHtml + pessoasHtml + '</div>' : '<p style="color:#000; font-size:0.9rem;">Nenhuma comanda aberta. Use "+ Nova comanda" (digite o número da comanda) para começar.</p>') +
                         (vipHtml ? '<h2 style="color:#000; margin: 1.5rem 0 0.5rem;">⭐ VIP (conta mensal)</h2><p style="color:#000; font-size:0.8rem; margin-bottom:0.75rem;">Não entram no fechamento do dia nem no "Encerrar todas".</p><div class="grid-cartoes">' + vipHtml + '</div>' : '') +
                         '</div>' +
                         lateral +
