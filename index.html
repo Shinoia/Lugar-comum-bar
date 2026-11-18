@@ -896,11 +896,11 @@
                 obst = out;
             }
             lerObstaculos();
-            var j = { raf: 0, cabecas: 0, toques: [], fim: false, el: el, hs: [], t0: Date.now(), ic: ic, heroiLib: true, heroiQuando: Date.now() + 4000 };   // o herói voador surge 1 s depois do último personagem (3º em 3 s)
+            var j = { raf: 0, cabecas: 0, toques: [], fim: false, el: el, hs: [], t0: Date.now(), ic: ic, heroiLib: true, heroiQuando: Date.now() + 6000, oncaQuando: Date.now() + 9000 };   // o herói voador surge 1 s depois do último personagem (4º em 5 s)
             jogo = j;
             function novo(tipo) {
                 tipo = tipo || 0;
-                var cores = ['#009c3b', '#2b2f3a', '#1d3f9e', '#222'];   // 0 jogador verde/amarelo, 1 político, 2 Tio Sam, 3 revolucionário
+                var cores = ['#009c3b', '#2b2f3a', '#1d3f9e', '#222', '#7a5a3a'];   // 0 jogador verde/amarelo, 1 político, 2 Tio Sam, 3 revolucionário, 4 senhor grisalho (morre só para a ema)
                 return { x: 20 + Math.random() * (W - 40), y: 0, vx: VEL * (tipo === 1 ? 1.3 : 1) * (Math.random() < 0.5 ? -1 : 1), vy: 0, solo: false, andar: 0, dir: 1, estado: 'vivo', t: 0, cab: null, sang: [], cor: cores[tipo], tipo: tipo, pulo: tipo === 2 ? 0.03 : (tipo === 1 ? 0.02 : 0.012), briga: 0, cd: 0, fase: 0, ft: 0, acabou: false, morte: '', mortes: 0, tomba: 0, forma: 'humano', estagio: 0, jc: 0, rasteja: false, oculto: false };
             }
             function bate(x, y) { // caixa do corpo com pés em (x,y) bate em algum ícone?
@@ -957,6 +957,15 @@
                 t = t || 0;
                 var cabelo = t === 1 ? '#a8adb3' : (t === 2 ? '#f2f2f2' : (t === 3 ? '#555' : '#5a3a1a'));
                 g.fillStyle = '#f0c8a0'; g.fillRect(x - 3 * p, y, 6 * p, 6 * p);
+                if (t === 4) { // senhor grisalho: calvo no topo, tufos nas laterais, bigode branco e óculos redondos
+                    g.fillStyle = '#8a5a2e'; g.fillRect(x - 3 * p, y - p, 6 * p, 2 * p); g.fillRect(x - 4 * p, y, p, 4 * p); g.fillRect(x + 3 * p, y, p, 4 * p); g.fillRect(x - 3 * p, y + p, p, 2 * p); g.fillRect(x + 2 * p, y + p, p, 2 * p);
+                    g.fillStyle = '#000'; g.fillRect(x + (dir > 0 ? 0 : -2) * p, y + 2 * p, p, p); g.fillRect(x + (dir > 0 ? 2 : 0) * p, y + 2 * p, p, p);
+                    g.strokeStyle = '#222'; g.lineWidth = Math.max(1, p * 0.4);
+                    g.beginPath(); g.arc(x + (dir > 0 ? 0.5 : -1.5) * p, y + 2.5 * p, 1.3 * p, 0, 6.2832, false); g.stroke();
+                    g.beginPath(); g.arc(x + (dir > 0 ? 2.5 : 0.5) * p, y + 2.5 * p, 1.3 * p, 0, 6.2832, false); g.stroke();
+                    g.fillStyle = '#fff'; g.fillRect(x - 2 * p, y + 4 * p, 4 * p, p * 1.1);
+                    return;
+                }
                 g.fillStyle = cabelo; g.fillRect(x - 3 * p, y - p, 6 * p, 2 * p); g.fillRect(x - 3 * p, y, p, 3 * p);
                 if (t === 3) g.fillRect(x - 4 * p, y - 2 * p, 8 * p, 3 * p);
                 g.fillStyle = '#000'; g.fillRect(x + (dir > 0 ? 0 : -2) * p, y + 2 * p, p, p); g.fillRect(x + (dir > 0 ? 2 : 0) * p, y + 2 * p, p, p);
@@ -981,7 +990,7 @@
                 var t = h.tipo || 0;
                 var x = Math.round(h.x), y = Math.round(h.y) - 9 * p; // y = centro do corpo (pés em h.y)
                 var perna = ((h.estado === 'vivo' || h.rev) && h.solo) ? ((Math.floor(h.andar / 5) % 2) ? 1 : -1) : 0;
-                var calca = t === 0 ? '#ffdf00' : (t === 1 ? '#333' : (t === 2 ? '#e0262d' : '#111'));
+                var calca = t === 0 ? '#ffdf00' : (t === 1 ? '#333' : (t === 2 ? '#e0262d' : (t === 4 ? '#5a4430' : '#111')));
                 var braco = t === 0 ? '#ffdf00' : h.cor;
                 g.fillStyle = calca;
                 g.fillRect(x - 3 * p, y + 4 * p + (perna > 0 ? 0 : p), 2 * p, 5 * p - (perna > 0 ? 0 : p));
@@ -991,10 +1000,14 @@
                 if (t === 0) { g.fillStyle = '#ffdf00'; g.fillRect(x - 4 * p, y + p, 8 * p, p); }
                 else if (t === 1) { g.fillStyle = '#fff'; g.fillRect(x - p, y - 3 * p, 2 * p, 2 * p); g.fillStyle = '#e0262d'; g.fillRect(x - p * 0.5, y - 2 * p, p, 5 * p); }
                 else if (t === 2) { g.fillStyle = '#fff'; g.fillRect(x - p, y - 3 * p, 2 * p, 3 * p); g.fillStyle = '#e0262d'; g.fillRect(x - p * 0.5, y - 3 * p, p, 3 * p); }
+                else if (t === 4) { g.fillStyle = '#fff'; g.fillRect(x - p, y - 3 * p, 2 * p, 3 * p); g.fillStyle = '#e07b00'; g.fillRect(x - p * 0.5, y - 3 * p, p, 5 * p); }
                 else { g.fillStyle = '#eee'; g.fillRect(x - p, y - 3 * p, 2 * p, 4 * p); }
                 g.fillStyle = braco; g.fillRect(x - 6 * p, y - 3 * p + (perna > 0 ? p : 0), 2 * p, 5 * p); g.fillRect(x + 4 * p, y - 3 * p + (perna > 0 ? 0 : p), 2 * p, 5 * p);
                 g.fillStyle = '#f0c8a0'; g.fillRect(x - 6 * p, y + 2 * p + (perna > 0 ? p : 0), 2 * p, p); g.fillRect(x + 4 * p, y + 2 * p + (perna > 0 ? 0 : p), 2 * p, p);
-                if (h.estado === 'vivo' || h.estado === 'parado' || h.comCabeca) cabeca(x, y - 9 * p, h.dir, t);
+                if ((h.estado === 'vivo' || h.estado === 'parado' || h.comCabeca) && !h.semCabeca) cabeca(x, y - 9 * p, h.dir, t);
+                if (t === 4 && h.estado === 'vivo') { // segura uma caixinha na mão da frente
+                    var cx4 = x + h.dir * 7 * p, cy4 = y + 0.5 * p; g.fillStyle = '#c8923a'; g.fillRect(cx4 - 2 * p, cy4 - 2 * p, 4 * p, 3.5 * p); g.fillStyle = '#e8c070'; g.fillRect(cx4 - 2 * p, cy4 - 2 * p, 4 * p, p * 0.8); g.fillStyle = '#b3322a'; g.fillRect(cx4 - p * 0.4, cy4 - 2 * p, p * 0.8, 3.5 * p);
+                }
                 if (h.flechado) { // flecha cravada no peito
                     g.strokeStyle = '#7a5230'; g.lineWidth = Math.max(2, p * 0.7); g.beginPath(); g.moveTo(x - h.sdir * 8 * p, y - p); g.lineTo(x + h.sdir * 2 * p, y - p); g.stroke();
                     g.fillStyle = '#d4202a'; g.fillRect(x - h.sdir * 8 * p - p, y - 2 * p, 2 * p, 2 * p);
@@ -1146,7 +1159,7 @@
                 }
             }
             function reiniciar() { // todos já morreram: recomeça a sequência (1º agora, 2º em 1 s, 3º em 3 s)
-                j.hs = []; j.t0 = Date.now(); j.nuvem = null; j.toques = [];
+                j.hs = []; j.t0 = Date.now(); j.nuvem = null; j.toques = []; j.onca = null; j.emaR = null;
                 if (ic) ic.style.visibility = 'visible';
             }
             function checarBriga(a, b) {
@@ -1155,6 +1168,7 @@
                 if (Math.abs(a.x - b.x) < BW * 1.3 && Math.abs(a.y - b.y) < BH * 0.8) {
                     a.briga = b.briga = 90; a.cd = b.cd = 300;
                     j.nuvem = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 - BH / 2, t: 90, par: [a, b] };
+                    if (!j.pantera && !j.onca && Date.now() >= (j.oncaQuando || 0) && a.tipo !== 4 && b.tipo !== 4 && a.forma === 'humano' && b.forma === 'humano' && Math.random() < 0.6) { chamarOnca(); return; }
                     var sd = a.x < b.x ? -1 : 1;   // depois da briga, cada um foge para um lado
                     a.vx = sd * VEL * 1.6; b.vx = -sd * VEL * 1.6;
                 }
@@ -1243,6 +1257,7 @@
             // fase 2: foguete cruza a página e acerta o político; fase 3: o revolucionário baixa a guilhotina no Tio Sam
             function escolherMorte(h) {
                 var m, lst;
+                if (h.tipo === 4) return 'ema';   // o senhor grisalho só morre para a ema gigante
                 if (h.tipo === 0) {
                     if (h.estagio === 0) m = 'ferramentas';
                     else if (h.estagio === 1) m = 'vacina';
@@ -1272,7 +1287,7 @@
                 }
             }
             function animarTiro(h, ft, agora) {
-                var sh = j.hs[2], tx = h.x, ty = h.y - BH * 0.3;
+                var sh = null, shq; for (shq = 0; shq < j.hs.length; shq++) if (j.hs[shq].tipo === 2) sh = j.hs[shq]; var tx = h.x, ty = h.y - BH * 0.3;
                 var sx = sh ? sh.x : W - 30, sy = sh ? sh.y : H, dir = tx >= sx ? 1 : -1, gx = sx + dir * 6 * p, gy = sy - 11 * p;
                 if (ft < 40) { g.fillStyle = '#222'; g.fillRect(dir > 0 ? gx - p : gx - 5 * p, gy, 6 * p, 2 * p); g.fillRect(dir > 0 ? gx - p : gx - p, gy + 2 * p, 2 * p, 3 * p); }
                 if (ft === 40) h.bala = { x: gx, y: gy };
@@ -1316,7 +1331,7 @@
                 var n = 0, q, o;
                 for (q = 0; q < j.hs.length; q++) {
                     o = j.hs[q];
-                    if (o === h || o.estado !== 'vivo' || o.fase !== 0) continue;
+                    if (o === h || o.estado !== 'vivo' || o.fase !== 0 || o.tipo === 4) continue;
                     if (Math.abs(o.x - h.x) < S * 0.6 && Math.abs(o.y - h.y) < BH * 3) { o.estado = 'parado'; o.vx = 0; o.fase = 1; o.ft = 0; o.morte = 'explosao'; n++; }
                 }
                 if (n > 0 && !j.heroiLib) { j.heroiLib = true; j.heroiQuando = Date.now() + 2500; }
@@ -1324,6 +1339,8 @@
             function animarMorte(h) {
                 var ft = h.ft++, agora = Date.now(), k, m = h.morte;
                 if (m === 'chicote') { if (h.tomba < 1.5) h.tomba += 0.07; if (agora - h.tFim >= 2200) h.acabou = true; return; }
+                if (m === 'decap') { if (h.tomba < 1.5) h.tomba += 0.07; if (agora - h.tFim >= 2200) h.acabou = true; return; }
+                if (m === 'ema') { animarEma(h, ft, agora); return; }
                 if (m === 'flecha') { animarFlecha(h); return; }
                 if (m === 'vacina') { animarVacina(h, ft); return; }
                 if (m === 'tiro') { animarTiro(h, ft, agora); return; }
@@ -1523,17 +1540,24 @@
             // ---------- pantera-negra (animal de verdade, o dobro do tamanho dos bonecos): clicou numa briga, ela chega e mata todos os envolvidos com uma chicotada de cauda ----------
             function desenharPantera(pt) {
                 var d = pt.dir, x = pt.x, y = pt.y, k, i, perna = Math.sin(pt.andar * 0.45) * 2.2 * p, u = pt.fase === 'bate' ? Math.min(1, pt.ft / 24) : 0;
-                var cor = '#0b0b0f', cl = '#2a2a33';
+                var on = !!pt.onca, cor = '#c98a3d', cl = '#e8bb7a';   // cachorro caramelo
                 // cauda (chicote): em repouso fica erguida para trás; na chicotada varre por cima do corpo até a frente
-                var bx = x - d * 13 * p, by = y - 10 * p, px = bx, py = by, ang, L = 3 * p, fr;
+                var bx = x - d * 13 * p, by = y - 10 * p, px = bx, py = by, ang = 0, L = (on ? 4.2 : 3) * p, fr;
                 g.strokeStyle = cor; g.lineCap = 'round'; g.lineWidth = 2.4 * p; g.beginPath(); g.moveTo(bx, by);
                 for (i = 0; i < 9; i++) {
                     fr = pt.fase === 'bate' ? Math.max(0, Math.min(1, u * 1.35 - i * 0.045)) : 0;
-                    ang = (3.14159 * 0.8) * (1 - fr) + (-0.15) * fr + (pt.fase === 'bate' ? 0 : Math.sin(pt.andar * 0.2 + i * 0.5) * 0.25);
+                    ang = (3.14159 * 0.8) * (1 - fr) + (on ? 0.28 : -0.15) * fr + (pt.fase === 'bate' ? 0 : Math.sin(pt.andar * 0.2 + i * 0.5) * 0.25);
                     px += d * Math.cos(ang) * L; py -= Math.sin(ang) * L; g.lineTo(px, py);
                 }
                 g.stroke();
                 pt.tx = px; pt.ty = py;
+                if (on) { // a foice vai presa na ponta da cauda
+                    g.save(); g.translate(px, py); g.rotate(Math.atan2(-Math.sin(ang), d * Math.cos(ang))); g.scale(1, d);
+                    g.strokeStyle = '#6b4a2b'; g.lineWidth = 1.3 * p; g.lineCap = 'round'; g.beginPath(); g.moveTo(-3 * p, 0); g.lineTo(9 * p, 0); g.stroke();
+                    g.fillStyle = '#d5d9de'; g.beginPath(); g.moveTo(8 * p, 0.6 * p); g.quadraticCurveTo(15 * p, -2 * p, 11 * p, -11 * p); g.quadraticCurveTo(11 * p, -5 * p, 5 * p, -1.2 * p); g.closePath(); g.fill();
+                    g.strokeStyle = '#8b9199'; g.lineWidth = Math.max(1, p * 0.3); g.stroke();
+                    g.restore();
+                }
                 // pernas
                 g.fillStyle = cor;
                 g.fillRect(x - 11 * p + perna, y - 8 * p, 3.2 * p, 8 * p); g.fillRect(x - 6 * p - perna, y - 8 * p, 3.2 * p, 8 * p);
@@ -1545,10 +1569,10 @@
                 var hx = x + d * 14 * p, hy = y - 13 * p;
                 g.fillStyle = cor; g.beginPath(); g.arc(hx, hy, 4.6 * p, 0, 6.2832, false); g.fill();
                 g.fillRect(hx + (d > 0 ? 2 * p : -6 * p), hy, 4 * p, 3 * p);   // focinho
-                g.beginPath(); g.moveTo(hx - 3.6 * p, hy - 3 * p); g.lineTo(hx - 2.4 * p, hy - 6.4 * p); g.lineTo(hx - 0.6 * p, hy - 4 * p); g.closePath(); g.fill();
-                g.beginPath(); g.moveTo(hx + 3.6 * p, hy - 3 * p); g.lineTo(hx + 2.4 * p, hy - 6.4 * p); g.lineTo(hx + 0.6 * p, hy - 4 * p); g.closePath(); g.fill();
-                g.fillStyle = '#facc15'; g.beginPath(); g.arc(hx + d * 1.6 * p, hy - 1.2 * p, 1 * p, 0, 6.2832, false); g.fill(); g.beginPath(); g.arc(hx - d * 0.6 * p, hy - 1.2 * p, 0.9 * p, 0, 6.2832, false); g.fill();
-                g.fillStyle = '#fff'; g.fillRect(hx + d * 3.4 * p - (d > 0 ? 0 : p), hy + 2.2 * p, p, 1.2 * p);
+                g.fillStyle = '#9a5a22'; g.fillRect(hx - d * 3.6 * p - (d > 0 ? 0 : 0.5 * p), hy - 3.6 * p, 2.6 * p, 6 * p); g.fillRect(hx - d * 0.4 * p - 1.2 * p, hy - 4 * p, 2.4 * p, 4.6 * p);   // orelhas caídas
+                g.fillStyle = '#000'; g.beginPath(); g.arc(hx + d * 1.8 * p, hy - 1.2 * p, 0.8 * p, 0, 6.2832, false); g.fill();
+                g.fillStyle = '#111'; g.fillRect(hx + d * 5.4 * p - (d > 0 ? 0 : 1.6 * p), hy - 0.4 * p, 1.6 * p, 1.4 * p);   // nariz
+                g.fillStyle = '#ef6f8a'; g.fillRect(hx + d * 3 * p - (d > 0 ? 0 : 1.4 * p), hy + 2.6 * p + Math.abs(Math.sin(pt.andar * 0.3)) * 0.6 * p, 1.4 * p, 2.4 * p);   // língua
                 // estalo no fim da chicotada
                 if (pt.fase === 'bate' && pt.ft >= 18 && pt.ft < 30) {
                     g.strokeStyle = '#fff'; g.lineWidth = Math.max(1.5, p * 0.6);
@@ -1559,7 +1583,7 @@
                 var n = j.nuvem, lado = n.x < W / 2 ? 1 : -1, q, o, par = (n.par || []).slice();
                 for (q = 0; q < par.length; q++) {
                     o = par[q]; o.condenado = true;
-                    if (o === j.heroi) o.fb = 99999; else if (o === j.vil) o.pausa = 99999; else o.briga = 99999;
+                    if (o === j.heroi) o.fb = 99999; else if (o === j.vil || o === j.emaR) o.pausa = 99999; else o.briga = 99999;
                 }
                 n.t = 99999;
                 var py0 = H; for (q = 0; q < par.length; q++) { if (j.hs.indexOf(par[q]) >= 0) { py0 = Math.min(H, par[q].y); break; } }   // anda na mesma altura onde os bonecos brigam
@@ -1568,6 +1592,8 @@
             function chicotear(o) {
                 var agora = Date.now(), k, cx, cy;
                 o.condenado = false;
+                if (o.tipo === 4) { o.briga = 0; return; }   // o senhor grisalho só morre para a ema
+                if (o === j.emaR) { o.pausa = 0; return; }   // a ema briga com todos mas não morre
                 if (o === j.heroi) { o.fb = 0; o.estado = 'cai'; o.vy = 0; return; }
                 if (o === j.vil) { o.pausa = 0; o.fase = 'morto'; o.tm = agora; j.cabecas++; return; }
                 cx = o.x; cy = o.y - BH * 0.5;
@@ -1589,6 +1615,161 @@
                     if (pt.x < -30 * p || pt.x > W + 30 * p) { j.pantera = null; return; }
                 }
                 desenharPantera(pt);
+            }
+
+            // ---------- onça-pintada (original): entra numa briga e, quando ela acaba, passa a foice (presa na cauda) na cabeça dos 2 bonecos ----------
+            function chamarOnca() {
+                var n = j.nuvem, lado = n.x < W / 2 ? 1 : -1, q, o, par = n.par.slice(), py0 = H;
+                for (q = 0; q < par.length; q++) { o = par[q]; o.condenado = true; o.briga = 99999; py0 = Math.min(py0, o.y); }
+                n.t = 99999; n.onca = true;
+                j.onca = { onca: true, x: lado > 0 ? -26 * p : W + 26 * p, y: py0, dir: lado, andar: 0, fase: 'entra', ft: 0, lado: lado, nx: n.x,
+                           alvoX: Math.max(10 * p, Math.min(W - 10 * p, n.x - lado * 18 * p)), par: par };
+            }
+            function decapitar(o) {
+                o.condenado = false; o.briga = 0; cortar(o);
+                o.fase = 1; o.ft = 0; o.morte = 'decap'; o.boom = true; o.tFim = Date.now();
+            }
+            function passoOnca() {
+                var pt = j.onca, q, o, ok = true, jx = 0, jy = 0;
+                if (!pt) return;
+                for (q = 0; q < pt.par.length; q++) { o = pt.par[q]; if (j.hs.indexOf(o) < 0 || o.estado !== 'vivo' || o.fase !== 0) ok = false; }
+                if (!ok && pt.fase !== 'sai' && pt.fase !== 'bate') { // alguém sumiu (jogo reiniciado): solta todo mundo e a onça vai embora
+                    for (q = 0; q < pt.par.length; q++) { pt.par[q].condenado = false; pt.par[q].briga = 0; }
+                    if (j.nuvem) j.nuvem.t = 0;
+                    pt.fase = 'sai'; pt.dir = -pt.dir;
+                }
+                if (pt.fase === 'entra') {
+                    pt.x += pt.dir * VEL * 2.6; pt.andar++;
+                    if ((pt.dir > 0 && pt.x >= pt.alvoX) || (pt.dir < 0 && pt.x <= pt.alvoX)) { pt.fase = 'briga'; pt.ft = 0; }
+                } else if (pt.fase === 'briga') { // pula para dentro da confusão
+                    pt.ft++; pt.andar += 2;
+                    pt.x += (pt.nx - pt.lado * 7 * p - pt.x) * 0.12;
+                    jx = (Math.random() - 0.5) * 3 * p; jy = (Math.random() - 0.5) * 2 * p;
+                    if (pt.ft >= 85) { pt.fase = 'bate'; pt.ft = 0; pt.xb = pt.x; }
+                } else if (pt.fase === 'bate') {
+                    pt.ft++;
+                    if (pt.ft <= 16) pt.x = pt.xb + (pt.nx - pt.lado * 17 * p - pt.xb) * suave(pt.ft / 16);   // recua um passo para girar a foice
+                    if (pt.ft === 20) { for (q = 0; q < pt.par.length; q++) decapitar(pt.par[q]); if (j.nuvem) j.nuvem.t = 0; }
+                    if (pt.ft >= 62) { pt.fase = 'sai'; pt.dir = -pt.dir; }
+                } else {
+                    pt.x += pt.dir * VEL * 2.2; pt.andar++;
+                    if (pt.x < -32 * p || pt.x > W + 32 * p) { j.onca = null; j.oncaQuando = Date.now() + 20000 + Math.random() * 15000; return; }
+                }
+                g.save(); g.translate(jx, jy); desenharPantera(pt); g.restore();
+            }
+            // ---------- ema gigante: ataca o senhor grisalho, arranca a cabeça, "come" e cospe ----------
+            function desenharEma(em, y, vh, cabecaNoBico, bojo) {
+                var d = em.dir, x = em.x, k, sw = Math.sin(em.andar * 0.42) * 5 * p, Sx = x + d * 10 * p, Sy = y - 32 * p, Hx = em.hx, Hy = em.hy;
+                var Cx = Sx + d * 2 * p, Cy = Math.min(Sy, Hy) - 6 * p;
+                // pernas
+                g.strokeStyle = '#8a7a68'; g.lineWidth = 2.2 * p; g.lineCap = 'round';
+                for (k = 0; k < 2; k++) {
+                    var fx = x + (k ? 3 : -4) * p + (k ? -sw : sw) * (em.andando ? 1 : 0.1);
+                    g.beginPath(); g.moveTo(x + (k ? 3 : -4) * p, y - 22 * p); g.lineTo(fx, y - 1 * p); g.stroke();
+                    g.lineWidth = 1.2 * p; g.beginPath(); g.moveTo(fx - 3 * p, y - p * 0.5); g.lineTo(fx + 4 * p, y - p * 0.5); g.stroke(); g.lineWidth = 2.2 * p;
+                }
+                // cauda de penas e corpo felpudo
+                g.fillStyle = '#5a4c3b'; g.save(); g.translate(x - d * 12 * p, y - 29 * p); g.scale(1, 1.2); g.beginPath(); g.arc(0, 0, 6 * p, 0, 6.2832, false); g.restore(); g.fill();
+                g.fillStyle = '#6f5f4b'; g.save(); g.translate(x, y - 27 * p); g.scale(1, 0.68); g.beginPath(); g.arc(0, 0, 14 * p, 0, 6.2832, false); g.restore(); g.fill();
+                g.strokeStyle = '#4a3d30'; g.lineWidth = Math.max(1, p * 0.5);
+                for (k = 0; k < 9; k++) { g.beginPath(); g.moveTo(x - 11 * p + k * 2.8 * p, y - 33 * p + (k % 3) * 2 * p); g.lineTo(x - 12 * p + k * 2.8 * p, y - 27 * p + (k % 3) * 2 * p); g.stroke(); }
+                // pescoço
+                g.strokeStyle = '#7f95a6'; g.lineWidth = 4.4 * p; g.beginPath(); g.moveTo(Sx, Sy); g.quadraticCurveTo(Cx, Cy, Hx, Hy); g.stroke();
+                g.strokeStyle = '#a9bac6'; g.lineWidth = 1.6 * p; g.beginPath(); g.moveTo(Sx, Sy); g.quadraticCurveTo(Cx, Cy, Hx, Hy); g.stroke();
+                if (bojo !== null && bojo !== undefined) { // a cabeça descendo pelo pescoço
+                    var s2 = bojo, bx2 = (1 - s2) * (1 - s2) * Hx + 2 * (1 - s2) * s2 * Cx + s2 * s2 * Sx, by2 = (1 - s2) * (1 - s2) * Hy + 2 * (1 - s2) * s2 * Cy + s2 * s2 * Sy;
+                    g.fillStyle = '#f0c8a0'; g.beginPath(); g.arc(bx2, by2, 3.4 * p, 0, 6.2832, false); g.fill();
+                    g.fillStyle = '#d6d6d6'; g.fillRect(bx2 - 3.4 * p, by2 - p, p, 2 * p); g.fillRect(bx2 + 2.4 * p, by2 - p, p, 2 * p);
+                }
+                // cabeça da ema e bico
+                g.fillStyle = '#6f8190'; g.beginPath(); g.arc(Hx, Hy, 3.2 * p, 0, 6.2832, false); g.fill();
+                var ab = em.bico || 0;
+                g.fillStyle = '#3a3a3a';
+                g.beginPath(); g.moveTo(Hx + d * 2 * p, Hy - 1.4 * p - ab * 1.4 * p); g.lineTo(Hx + d * 8 * p, Hy - 0.2 * p - ab * 1.2 * p); g.lineTo(Hx + d * 2 * p, Hy + 0.2 * p); g.closePath(); g.fill();
+                g.beginPath(); g.moveTo(Hx + d * 2 * p, Hy + 0.4 * p); g.lineTo(Hx + d * 7 * p, Hy + 0.8 * p + ab * 2 * p); g.lineTo(Hx + d * 2 * p, Hy + 2 * p); g.closePath(); g.fill();
+                g.fillStyle = '#f59e0b'; g.beginPath(); g.arc(Hx + d * 0.6 * p, Hy - 1 * p, 1 * p, 0, 6.2832, false); g.fill();
+                g.fillStyle = '#000'; g.beginPath(); g.arc(Hx + d * 0.8 * p, Hy - 1 * p, 0.45 * p, 0, 6.2832, false); g.fill();
+                if (cabecaNoBico) { g.save(); g.translate(Hx + d * 5 * p, Hy + 1 * p); g.rotate(em.rotc || 0); cabeca(0, -3 * p, d, 4); g.restore(); }
+            }
+            function animarEma(h, ft, agora) {
+                var em = h.ema, d, y = h.y, rx, ry, vhx = h.x, vhy = h.y - BH * 0.9, k, u;
+                if (!em) {
+                    d = h.x > W / 2 ? 1 : -1;
+                    var x0 = d > 0 ? -34 * p : W + 34 * p;
+                    if (j.emaR) { x0 = j.emaR.x; d = h.x >= x0 ? 1 : -1; j.emaR = null; }   // é a própria ema que estava fugindo dele
+                    h.ema = em = { dir: d, x: x0, alvo: Math.max(16 * p, Math.min(W - 16 * p, h.x - d * 22 * p)), fase: 'entra', f: 0, andar: 0, hx: 0, hy: 0, bico: 0, andando: true };
+                    h.vx = 0;
+                }
+                d = em.dir; em.f++; rx = em.x + d * 17 * p; ry = y - 50 * p;
+                if (em.fase === 'entra') {
+                    em.x += d * VEL * 2.7; em.andar++; em.hx = em.x + d * 17 * p + Math.sin(em.andar * 0.4) * p; em.hy = ry + Math.cos(em.andar * 0.8) * p;
+                    if ((d > 0 && em.x >= em.alvo) || (d < 0 && em.x <= em.alvo)) { em.x = em.alvo; em.fase = 'olha'; em.f = 0; em.andando = false; }
+                } else if (em.fase === 'olha') {
+                    em.hx = rx; em.hy = ry + Math.sin(em.f * 0.5) * p; em.bico = 0;
+                    if (em.f >= 14) { em.fase = 'bota'; em.f = 0; }
+                } else if (em.fase === 'bota') { // dá o bote na cabeça do senhor
+                    u = suave(em.f / 10); em.hx = rx + (vhx - rx) * u; em.hy = ry + (vhy - ry) * u; em.bico = u > 0.5 ? 1 : 0.3;
+                    if (em.f >= 10) { // arrancou: o corpo fica sem cabeça
+                        h.estado = 'morto'; h.vx = 0; h.boom = true; h.tFim = agora; j.cabecas++; h.semCabeca = true;
+                        for (k = 0; k < 30; k++) h.sang.push({ x: h.x, y: h.y - BH * 0.85, vx: (Math.random() - 0.5) * p * 2.5, vy: -Math.random() * p * 3, v: 35 + Math.random() * 30, c: '#b00000', s: Math.max(2, p) });
+                        em.fase = 'come'; em.f = 0;
+                    }
+                } else if (em.fase === 'come') { // levanta o pescoço com a cabeça no bico e mastiga
+                    u = suave(em.f / 16); em.hx = vhx + (rx - vhx) * u; em.hy = vhy + (ry - vhy) * u;
+                    em.bico = em.f > 16 ? 0.5 + 0.5 * Math.sin(em.f * 1.4) : 0.2; em.rotc = Math.sin(em.f * 0.7) * 0.4 * d;
+                    if (em.f > 16) em.hy += Math.sin(em.f * 1.4) * 1.2 * p;
+                    if (em.f < 14) for (k = 0; k < 2; k++) h.sang.push({ x: h.x, y: h.y - BH * 0.85, vx: (Math.random() - 0.5) * p, vy: -Math.random() * p * 2, v: 25, c: '#b00000', s: Math.max(2, p) });
+                    if (em.f >= 52) { em.fase = 'engole'; em.f = 0; }
+                } else if (em.fase === 'engole') { // a cabeça desce pelo pescoço
+                    em.hx = rx; em.hy = ry + Math.sin(em.f * 0.9) * 1.2 * p; em.bico = 0.4 + 0.4 * Math.sin(em.f * 0.9);
+                    if (em.f >= 32) { em.fase = 'cospe'; em.f = 0; }
+                } else if (em.fase === 'cospe') { // engasga, joga o pescoço para trás e cospe a cabeça
+                    if (em.f < 10) { u = suave(em.f / 10); em.hx = rx - d * 6 * p * u; em.hy = ry - 4 * p * u; em.bico = 0.2; }
+                    else { u = suave((em.f - 10) / 6); em.hx = rx - d * 6 * p + (d * 22 * p) * u; em.hy = ry - 4 * p + 10 * p * u; em.bico = 1; }
+                    if (em.f === 14) {
+                        h.cab = { x: em.hx + d * 6 * p, y: em.hy, vx: d * p * 1.3, vy: -velPulo(altura * 0.45), rot: 0 };
+                        for (k = 0; k < 16; k++) h.sang.push({ x: em.hx + d * 6 * p, y: em.hy, vx: d * (0.5 + Math.random()) * p * 1.4, vy: (Math.random() - 0.6) * p * 2, v: 25 + Math.random() * 20, c: k % 2 ? '#b9e769' : '#d9f09a', s: Math.max(2, p) });
+                    }
+                    if (em.f >= 30) { em.fase = 'espera'; em.f = 0; }
+                } else if (em.fase === 'espera') {
+                    em.hx = rx; em.hy = ry + Math.sin(em.f * 0.3) * p; em.bico = 0;
+                    if (em.f >= 45) { em.fase = 'sai'; em.f = 0; em.dir = -d; em.andando = true; }
+                } else { // vai embora correndo
+                    d = em.dir; em.x += d * VEL * 2.7; em.andar++; em.hx = em.x + d * 17 * p; em.hy = ry + Math.cos(em.andar * 0.8) * p; em.bico = 0;
+                    if (em.x < -40 * p || em.x > W + 40 * p) { h.acabou = true; h.ema = null; return; }
+                }
+                if (em.fase === 'come' || em.fase === 'engole' || em.fase === 'cospe') { if (h.tomba < 1.5) h.tomba += 0.04; }
+                if (em.fase !== 'entra' && em.fase !== 'olha' && em.fase !== 'bota' && h.tomba < 1.5 && em.fase !== 'cospe' && em.fase !== 'come' && em.fase !== 'engole') h.tomba += 0.04;
+                desenharEma(em, y, null, em.fase === 'come', em.fase === 'engole' ? em.f / 32 : null);
+                if (ft > 1200) h.acabou = true;
+            }
+
+            // ---------- ema que foge do senhor grisalho: anda pela página, briga com todo mundo que cruza, mas não morre ----------
+            function criarEmaR() {
+                var d = Math.random() < 0.5 ? 1 : -1;
+                j.emaR = { x: d > 0 ? W * 0.7 : W * 0.3, dir: d, andar: 0, hx: 0, hy: 0, bico: 0, andando: true, pausa: 0, cdb: 0 };
+            }
+            function passoEmaR() {
+                var em = j.emaR, q, o, jx = 0;
+                if (!em) return;
+                em.andar++; if (em.cdb > 0) em.cdb--;
+                if (em.pausa > 0) { em.pausa--; jx = (Math.random() - 0.5) * 3; em.andar += 2; }
+                else {
+                    for (q = 0; q < j.hs.length; q++) { // cruzou com alguém: confusão
+                        o = j.hs[q];
+                        if (o.tipo !== 4 && o.estado === 'vivo' && o.fase === 0 && !(o.cd > 0) && !(em.cdb > 0) && Math.abs(o.x - em.x) < BW * 1.4 && o.y > H - BH * 1.5) {
+                            o.briga = 90; o.cd = 300; em.pausa = 90; em.cdb = 300; o.vx = (o.x >= em.x ? 1 : -1) * VEL * 1.6; em.dir = o.x >= em.x ? -1 : 1;
+                            j.nuvem = { x: (o.x + em.x) / 2, y: H - BH * 0.8, t: 90, par: [o, em] }; break;
+                        }
+                    }
+                    if (em.pausa <= 0) {
+                        em.x += em.dir * VEL * 1.15;
+                        if (em.x < 14 * p) { em.x = 14 * p; em.dir = 1; } if (em.x > W - 14 * p) { em.x = W - 14 * p; em.dir = -1; }
+                        if (Math.random() < 0.004) em.dir = -em.dir;
+                    }
+                }
+                em.hx = em.x + em.dir * 17 * p; em.hy = H - 50 * p + Math.cos(em.andar * 0.8) * p;
+                g.save(); g.translate(jx, 0); desenharEma(em, H, null, false, null); g.restore();
             }
             function passoHeroi() {
                 var h = j.heroi, v = j.vil, agora = Date.now(), sd;
@@ -1679,8 +1860,8 @@
                     if (hq.morte === 'flecha' && !hq.acabou) { dirI = hq.x >= indioPos.x ? 1 : -1; hq.dirI = dirI; if (hq.ft < 26) puxaI = Math.max(puxaI, hq.ft / 26); else if (hq.ft < 28) puxaI = 1; }
                 }
                 desenharIndio(puxaI, dirI);
-                var dec = Date.now() - j.t0, quando = [0, 1000, 3000];   // 1º ao liberar o jogo, 2º 1 s depois, 3º 3 s depois
-                while (j.hs.length < 3 && dec >= quando[j.hs.length]) j.hs.push(novo(j.hs.length));
+                var dec = Date.now() - j.t0, quando = [0, 1000, 3000, 5000], ordem = [4, 0, 1, 2];   // o senhor grisalho já começa o jogo correndo atrás da ema; depois 1 s, 3 s e 5 s
+                while (j.hs.length < 4 && dec >= quando[j.hs.length]) { var nn = novo(ordem[j.hs.length]); j.hs.push(nn); if (nn.tipo === 4) criarEmaR(); }
                 for (a2 = 0; a2 < j.hs.length; a2++) for (b2 = a2 + 1; b2 < j.hs.length; b2++) {
                     if (j.hs[a2].estado === 'vivo' && j.hs[b2].estado === 'vivo' && j.hs[a2].fase === 0 && j.hs[b2].fase === 0) checarBriga(j.hs[a2], j.hs[b2]);
                 }
@@ -1691,7 +1872,7 @@
                 }
                 for (hi = 0; hi < j.hs.length; hi++) {
                     h = j.hs[hi];
-                    if (h.estado === 'vivo') { if (h.briga > 0) h.briga--; else mover(h); }
+                    if (h.estado === 'vivo') { if (h.briga > 0) h.briga--; else { if (h.tipo === 4 && j.emaR) { var dxe = j.emaR.x - h.x; h.vx = Math.abs(dxe) < BW * 1.4 ? 0 : (dxe > 0 ? 1 : -1) * VEL * 1.05; if (h.vx !== 0) h.dir = h.vx > 0 ? 1 : -1; } mover(h); } }
                     else if (h.estado === 'abduzido') { /* flutuando */ }
                     else if (h.estado === 'parado') { var ya = h.y; h.vy += GRAV; h.y += h.vy; var op = bate(h.x, h.y); if (h.y >= H || op) { h.y = op ? op.t : H; h.vy = 0; } else pousarNoDesenho(h, ya); }
                     else {
@@ -1709,7 +1890,7 @@
                                 else if (h.estagio === 2) { nv.jc = h.jc + 1; if (nv.jc >= 3) { nv.estagio = 3; nv.forma = 'boi'; } }
                                 else if (h.estagio === 3) { nv.estagio = 0; nv.jc = 0; nv.forma = 'humano'; }
                             }
-                            aplicarForma(nv); j.hs[hi] = nv; continue; }
+                            aplicarForma(nv); j.hs[hi] = nv; if (nv.tipo === 4) criarEmaR(); continue; }
                     }
                     if (h.cab) {
                         g.save(); g.translate(h.cab.x, h.cab.y); g.rotate(h.cab.rot); g.translate(-h.cab.x, -h.cab.y);
@@ -1725,6 +1906,8 @@
                 }
                 passoHeroi();
                 passoPantera();
+                passoOnca();
+                passoEmaR();
                 g.fillStyle = '#fff'; g.font = 'bold 14px sans-serif'; g.textAlign = 'left';
                 g.fillText('Mortes: ' + j.cabecas, 10, H - 10);
                 g.textAlign = 'right'; g.font = '11px sans-serif';
@@ -1752,7 +1935,7 @@
             function descer(px, py) {
                 if (px > 170 && px < 330 && py > H - 26) { limparTudo(); return; } // [ limpar desenho ]
                 var nu = j.nuvem;
-                if (nu && nu.t > 0 && nu.par && !j.pantera && (px - nu.x) * (px - nu.x) + (py - nu.y) * (py - nu.y) < (BW * 3) * (BW * 3)) { chamarPantera(); j.toques = []; return; }
+                if (nu && nu.t > 0 && nu.par && !nu.onca && !j.pantera && (px - nu.x) * (px - nu.x) + (py - nu.y) * (py - nu.y) < (BW * 3) * (BW * 3)) { chamarPantera(); j.toques = []; return; }
                 var he = j.heroi;
                 if (he && he.estado === 'voa' && !he.condenado && Math.abs(px - he.x) < BW * 1.7 && Math.abs(py - he.y) < BH * 1.2) { matarHeroi(); j.toques = []; return; }
                 var hit = acertou(px, py);
