@@ -702,10 +702,22 @@
         }
         function limparObsCli(t) { return String(t || '').replace(/[\r\n|]+/g, ' ').replace(/\s+/g, ' ').trim().substring(0, 80); }
         // guarda a obs no cliente (na tela na hora; na planilha em segundo plano). Acrescenta ao que já existia, com a data.
+        function obsDeHoje(nome) { // obs. do cliente anotadas HOJE (aparecem no cartão da comanda: "Shino - Com a Luana")
+            nome = limparNome(nome); if (!nome) return '';
+            var d = new Date(), z = function(n) { return (n < 10 ? '0' : '') + n; }, hoje = z(d.getDate()) + '/' + z(d.getMonth() + 1), out = [], vistos = {};
+            var add = function(t) { t = String(t || '').replace(/^\s+|\s+$/g, ''); var k = semAcento(t).toLowerCase(); if (t && !vistos[k]) { vistos[k] = 1; out.push(t); } };
+            var loc = estado.obsHoje && estado.obsHoje[semAcento(nome).toLowerCase()];
+            if (loc && loc.d === hoje) add(loc.t);
+            var c = achaCliente(nome);
+            if (c && c.obs) String(c.obs).split('|').forEach(function(e) { e = e.replace(/^\s+/, ''); if (e.indexOf(hoje + ':') === 0) add(e.substring(hoje.length + 1)); });
+            return out.join(', ');
+        }
         function salvarObsCliente(nome, tel, obs, soLocal) {
             nome = limparNome(nome); obs = limparObsCli(obs);
             if (!nome || !obs) return;
             var d = new Date(), z = function(n) { return (n < 10 ? '0' : '') + n; };
+            if (!estado.obsHoje) estado.obsHoje = {};
+            estado.obsHoje[semAcento(nome).toLowerCase()] = { d: z(d.getDate()) + '/' + z(d.getMonth() + 1), t: obs };
             var c = achaCliente(nome);
             if (!c) { c = { nome: nome, n: 0, tel: String(tel || '').replace(/\D/g, ''), obs: '' }; estado.clientes.push(c); }
             if (semAcento(c.obs || '').indexOf(semAcento(obs)) < 0) c.obs = (c.obs ? c.obs + ' | ' : '') + z(d.getDate()) + '/' + z(d.getMonth() + 1) + ': ' + obs;
@@ -2576,7 +2588,8 @@
             if (m && m.pessoa && !m.vip) {
                 var pq = partesPessoa(m.nome), nq = String(pq.nome).replace(/^VR - /, '');
                 if (!pq.num || !nq) return '';
-                return '<div style="font-size:0.8rem; font-weight:normal;">' + esc(nq) + (pq.tel ? ' 📞 ' + esc(pq.tel) : '') + '</div>';
+                var oh = obsDeHoje(nq);
+                return '<div style="font-size:0.8rem; font-weight:normal;">' + esc(nq) + (oh ? ' - <b>' + esc(oh) + '</b>' : '') + (pq.tel ? ' 📞 ' + esc(pq.tel) : '') + '</div>';
             }
             if (!m || m.pessoa || m.vip || m.status !== 'ocupada') return '';
             var ord = function(t) { var x = String(t).match(/(\d{2})\/(\d{2})\/(\d{4}) (\d{2}):(\d{2}):(\d{2})/); return x ? x[3] + x[2] + x[1] + x[4] + x[5] + x[6] : ''; };
