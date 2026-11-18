@@ -537,7 +537,7 @@
         // digitando quantidade ou observação: redesenhar fecharia a lista aberta e tiraria o cursor do campo.
         function formEmUso() {
             var ae = document.activeElement;
-            return !!(ae && (ae.id === 'select-produto' || ae.id === 'input-qtd' || ae.id === 'input-obs' || ae.id === 'input-tel-pessoa' || ae.id === 'tel-ni' || ae.id === 'input-nome-mesa' || String(ae.className || '').indexOf('rap-campo') >= 0));
+            return !!(ae && (ae.id === 'select-produto' || ae.id === 'busca-produto' || ae.id === 'input-qtd' || ae.id === 'input-obs' || ae.id === 'input-tel-pessoa' || ae.id === 'tel-ni' || ae.id === 'input-nome-mesa' || String(ae.className || '').indexOf('rap-campo') >= 0));
         }
         function renderizarSeLivre() {
             if (formEmUso()) { estado.renderAdiado = Date.now(); return; }
@@ -662,12 +662,59 @@
             if (!lista.length) return '<div style="font-size:0.8rem; color:#555;">Nenhum cliente com esse nome. Toque em Adicionar para criar.</div>';
             var aviso = avisoNomeRepetido(txt);
             return '<div style="border:2px solid #000; border-radius:0.5rem; overflow:hidden;">' + lista.map(function(c, i) {
-                return '<button type="button" data-nome="' + esc(c.nome) + '" data-tel="' + esc(c.tel || '') + '" onclick="escolherPessoa(this.getAttribute(\'data-nome\'), this.getAttribute(\'data-tel\'))" style="display:block; width:100%; text-align:left; background:#fff; border:0; ' + (i ? 'border-top:1px solid #ccc; ' : '') + 'padding:0.5rem 0.75rem; border-radius:0; font-size:1rem; color:#000;">' + esc(c.nome) + sufixoTel(c) + (c.n ? ' <small style="color:#666;">(' + c.n + 'x)</small>' : '') + '</button>';
+                return '<button type="button" data-nome="' + esc(c.nome) + '" data-tel="' + esc(c.tel || '') + '" onclick="selecionarSugestao(this.getAttribute(\'data-nome\'), this.getAttribute(\'data-tel\'))" style="display:block; width:100%; text-align:left; background:#fff; border:0; ' + (i ? 'border-top:1px solid #ccc; ' : '') + 'padding:0.5rem 0.75rem; border-radius:0; font-size:1rem; color:#000;">' + esc(c.nome) + sufixoTel(c) + (c.n ? ' <small style="color:#666;">(' + c.n + 'x)</small>' : '') + (c.obs ? '<br><small style="color:#92400e;">📝 ' + esc(c.obs) + '</small>' : '') + '</button>';
             }).join('') + '</div>' + aviso;
         }
         function sugerirPessoas(txt) {
             var box = document.getElementById('sugestoes-pessoa');
             if (box) box.innerHTML = htmlSugestoes(txt);
+            estado.telSug = '';
+            mostrarObsCliente(txt, 'obs-cli-atual');
+        }
+        // Obs. do cliente (coluna D da aba Clientes): detalhe para reconhecer a pessoa (boné vermelho, camisa xadrez...)
+        function mostrarObsCliente(nome, boxId) {
+            var b = document.getElementById(boxId); if (!b) return;
+            var c = achaCliente(nome);
+            b.innerHTML = (c && c.obs) ? '<div style="background:#fef3c7; border:2px solid #b45309; border-radius:0.5rem; padding:0.4rem 0.5rem; margin-bottom:0.5rem; font-size:0.8rem; color:#000;">📝 Obs. anteriores: <b>' + esc(c.obs) + '</b></div>' : '';
+        }
+        function selecionarSugestao(nome, tel) {
+            var i = document.getElementById('input-nova-pessoa'); if (i) i.value = nome;
+            estado.telSug = tel || '';
+            var b = document.getElementById('sugestoes-pessoa'); if (b) b.innerHTML = '';
+            mostrarObsCliente(nome, 'obs-cli-atual');
+            var o = document.getElementById('input-obs-cli'); if (o && o.focus) o.focus();
+        }
+        function limparObsCli(t) { return String(t || '').replace(/[\r\n|]+/g, ' ').replace(/\s+/g, ' ').trim().substring(0, 80); }
+        // guarda a obs no cliente (na tela na hora; na planilha em segundo plano). Acrescenta ao que já existia, com a data.
+        function salvarObsCliente(nome, tel, obs, soLocal) {
+            nome = limparNome(nome); obs = limparObsCli(obs);
+            if (!nome || !obs) return;
+            var d = new Date(), z = function(n) { return (n < 10 ? '0' : '') + n; };
+            var c = achaCliente(nome);
+            if (!c) { c = { nome: nome, n: 0, tel: String(tel || '').replace(/\D/g, ''), obs: '' }; estado.clientes.push(c); }
+            if (semAcento(c.obs || '').indexOf(semAcento(obs)) < 0) c.obs = (c.obs ? c.obs + ' | ' : '') + z(d.getDate()) + '/' + z(d.getMonth() + 1) + ': ' + obs;
+            if (soLocal) return;
+            var falha = function(m) { alert('Não foi possível salvar a observação do cliente na planilha' + (m ? ': ' + m : '') + '. Confira se o Código do Apps Script está atualizado.'); };
+            fetch(API_URL + '?acao=cliente_obs&nome=' + encodeURIComponent(nome) + '&tel=' + encodeURIComponent(String(tel || '').replace(/\D/g, '')) + '&obs=' + encodeURIComponent(obs))
+                .then(function(res) { return res.json(); }).then(function(r) { if (!r || r.result !== 'success') falha(r && r.error); }).catch(function() { falha(''); });
+        }
+        // busca de produto: digite parte do nome e a lista mostra só os equivalentes (o 1º já fica selecionado)
+        function buscaProduto(inp, selId) {
+            var sel = document.getElementById(selId); if (!sel) return;
+            var i, o;
+            if (!sel._todas) { sel._todas = []; for (i = 0; i < sel.options.length; i++) { o = sel.options[i]; sel._todas.push({ v: o.value, t: o.text, s: o.getAttribute('style') || '' }); } }
+            var q = semAcento(inp.value), achou = 0, html = [];
+            sel.innerHTML = '';
+            for (i = 0; i < sel._todas.length; i++) {
+                var it = sel._todas[i];
+                if (q ? (!it.v || semAcento(it.t).indexOf(q) < 0) : false) continue;
+                if (q && !it.v) continue;
+                o = document.createElement('option'); o.value = it.v; o.text = it.t; if (it.s) o.setAttribute('style', it.s);
+                sel.appendChild(o); if (it.v) achou++;
+            }
+            if (q && !achou) { o = document.createElement('option'); o.value = ''; o.text = 'Nenhum produto encontrado'; sel.appendChild(o); }
+            sel.selectedIndex = 0;
+            sel.size = (q && achou > 1) ? Math.min(achou, 6) : 1;
         }
         // próximo número da comanda (zera a cada dia: a planilha só traz o dia atual). tipo 'VR' = venda rápida, '' = pessoa
         function proximoNumero(tipo) {
@@ -716,7 +763,10 @@
         function novaComanda() { novaPessoa(); }
         function confirmarNovaComanda() {
             var nomeIn = document.getElementById('input-nova-pessoa'), nome = limparNome(nomeIn ? nomeIn.value : '');
-            if (nome) { escolherPessoa(nome); return; }
+            var obsIn = document.getElementById('input-obs-cli'), obsC = limparObsCli(obsIn ? obsIn.value : '');
+            estado.obsNova = '';
+            if (nome) { estado.obsNova = obsC; var tl0 = estado.telSug; estado.telSug = ''; escolherPessoa(nome, tl0); return; }
+            if (obsC) { alert('Informe o nome do cliente para salvar a observação.'); if (nomeIn && nomeIn.focus) nomeIn.focus(); return; }
             var cn = document.getElementById('input-num-comanda');
             var n = parseInt(String(cn ? cn.value : '').replace(/\D/g, ''), 10);
             if (!n || n < 1) { alert('Digite o número da comanda.'); if (cn && cn.focus) cn.focus(); return; }
@@ -1466,7 +1516,10 @@
                 '<input type="tel" inputmode="numeric" id="input-num-comanda" maxlength="4" autocomplete="off" oninput="this.value = this.value.replace(/\\D/g, \'\')" style="width:100%; margin:0.25rem 0 0.5rem; font-size:1.2rem; text-align:center;">' +
                 '<label style="font-size:0.8rem;">Nome (opcional; comece a digitar para ver os clientes salvos; VIP = mensalista):</label>' +
                 '<input type="text" id="input-nova-pessoa" maxlength="40" autocomplete="off" style="width:100%; margin:0.25rem 0 0.5rem;" oninput="sugerirPessoas(this.value)" onkeydown="if(event.key===\'Enter\') confirmarNovaComanda()">' +
-                '<div id="sugestoes-pessoa" style="margin-bottom:0.75rem; max-height:40vh; overflow:auto;">' + htmlSugestoes('') + '</div>' +
+                '<div id="sugestoes-pessoa" style="margin-bottom:0.5rem; max-height:30vh; overflow:auto;">' + htmlSugestoes('') + '</div>' +
+                '<div id="obs-cli-atual"></div>' +
+                '<label style="font-size:0.8rem;">Obs. do cliente (ex.: boné vermelho, camisa xadrez) — soma ao que já existe:</label>' +
+                '<input type="text" id="input-obs-cli" maxlength="80" autocomplete="off" placeholder="Opcional" style="width:100%; margin:0.25rem 0 0.75rem;" onkeydown="if(event.key===\'Enter\') confirmarNovaComanda()">' +
                 '<div style="display:flex; gap:0.5rem; justify-content:flex-end;">' +
                     '<button type="button" onclick="fecharJanelaPessoa()" style="background:#fff; border:2px solid #000;">Cancelar</button>' +
                     '<button type="button" onclick="confirmarNovaComanda()" style="background:#facc15; border:2px solid #000;">Abrir</button>' +
@@ -1484,11 +1537,13 @@
             var n1 = document.getElementById('vr-nome'), t1 = document.getElementById('vr-tel'), ni1 = document.getElementById('vr-ni');
             if (ni1) v.ni = ni1.checked;
             if (n1) v.nome = n1.value; if (t1) v.tel = t1.value;
+            var oc1 = document.getElementById('vr-obscli'); if (oc1) v.obsCli = oc1.value;
             var r1 = document.getElementById('vr-recebido'); if (r1) v.recebido = r1.value;
         }
         function vrNome(txt) {
             var v = estado.vr; if (!v) return;
             v.nome = txt;
+            mostrarObsCliente(txt, 'vr-obs-atual');
             var box = document.getElementById('vr-sug');
             if (box) {
                 var lista = limparNome(txt) ? filtrarClientes(txt) : [];
@@ -1512,6 +1567,7 @@
             var box = document.getElementById('vr-sug'); if (box) box.innerHTML = '';
             var c = achaCliente(nome);
             tel = tel || (c && c.tel) || '';
+            mostrarObsCliente(nome, 'vr-obs-atual');
             if (tel) vrPreencherTel(tel);
         }
         function vrTotal() { return (estado.vr ? estado.vr.itens : []).reduce(function(t, i) { return t + i.qnt * i.preco; }, 0); }
@@ -1537,6 +1593,7 @@
                     return '<option value="' + esc(p.nome) + '" style="background-color:' + est.bg + '; color:#000;"' + (v.sel === p.nome ? ' selected' : '') + '>' + est.ico + esc(p.nome) + ' - ' + brl(p.preco) + '</option>';
                 }).join('');
             if (!CARDAPIO_OK) opc = '<option value="">⏳ Carregando produtos da planilha...</option>';
+            var oc0 = achaCliente(v.nome), obsAtualHtml = (oc0 && oc0.obs) ? '<div style="background:#fef3c7; border:2px solid #b45309; border-radius:0.5rem; padding:0.4rem 0.5rem; margin-bottom:0.4rem; font-size:0.8rem; color:#000;">📝 Obs. anteriores: <b>' + esc(oc0.obs) + '</b></div>' : '';
             var itens = v.itens.map(function(i, k) {
                 return '<div style="display:flex; justify-content:space-between; align-items:center; gap:0.5rem; padding:0.4rem 0; border-bottom:1px solid rgba(0,0,0,0.25);">' +
                     '<div><b>' + i.qnt + 'x ' + esc(i.produto) + '</b><br><small>' + brl(i.preco) + ' | Subtotal: ' + brl(i.qnt * i.preco) + (i.obs ? ' | ' + esc(i.obs) : '') + '</small></div>' +
@@ -1551,8 +1608,10 @@
                 '<div style="background:#facc15; border:2px solid #000; border-radius:0.5rem; text-align:center; font-weight:800; padding:0.6rem; margin:0.6rem 0;">VR-' + rotuloNumero('VR') + ' &nbsp;|&nbsp; Total: ' + brl(vrTotal()) + '</div>' +
                 '<div style="background:#ef4444; border-radius:0.5rem; padding:0.75rem; margin-bottom:0.6rem;"><label style="font-size:0.75rem;">Nome *</label><input type="text" id="vr-nome" maxlength="40" autocomplete="off" oninput="vrNome(this.value)" value="' + esc(v.nome || '') + '" style="width:100%; margin:0.2rem 0 0.4rem;"><div id="vr-sug"></div>' +
                     '<label style="font-size:0.75rem;">Telefone (opcional, com DDD)</label><input type="tel" id="vr-tel" inputmode="numeric" maxlength="16" value="' + esc(v.ni ? '' : (v.tel || '')) + '"' + (v.ni ? ' disabled' : '') + ' style="width:100%; margin:0.2rem 0;"><label style="display:block; font-size:0.85rem;"><input type="checkbox" style="width:auto; display:inline-block; margin-right:0.4rem;" id="vr-ni" onchange="vrNI(this.checked)"' + (v.ni ? ' checked' : '') + '> Não informado</label></div>' +
+                '<div style="background:#ef4444; border-radius:0.5rem; padding:0.75rem; margin-bottom:0.6rem;"><div id="vr-obs-atual">' + obsAtualHtml + '</div>' +
+                    '<label style="font-size:0.75rem;">Obs. do cliente (ex.: boné vermelho, camisa xadrez) — soma ao que já existe</label><input type="text" id="vr-obscli" maxlength="80" autocomplete="off" value="' + esc(v.obsCli || '') + '" placeholder="Opcional" style="width:100%; margin:0.2rem 0 0;"></div>' +
                 '<div style="background:#ef4444; border-radius:0.5rem; padding:0.75rem; margin-bottom:0.6rem;">' +
-                    '<label style="font-size:0.75rem;">SELECIONAR PRODUTO</label><select id="vr-produto" style="width:100%; margin:0.2rem 0 0.4rem;">' + opc + '</select>' +
+                    '<label style="font-size:0.75rem;">SELECIONAR PRODUTO</label><input type="text" id="vr-busca" placeholder="🔍 Digite para buscar o produto..." autocomplete="off" oninput="buscaProduto(this, \'vr-produto\')" style="width:100%; margin:0.2rem 0 0.3rem;"><select id="vr-produto" onchange="if(this.size>1)this.size=1;" style="width:100%; margin:0.2rem 0 0.4rem;">' + opc + '</select>' +
                     '<label style="font-size:0.75rem;">Qtd Solicitada:</label><input type="number" id="vr-qtd" min="1" value="' + esc(String(v.qtd)) + '" style="width:100%; margin:0.2rem 0 0.4rem; text-align:center;">' +
                     '<label style="font-size:0.75rem;">Observação:</label><input type="text" id="vr-obs" maxlength="60" value="' + esc(v.obs || '') + '" placeholder="Opcional" style="width:100%; margin:0.2rem 0 0.5rem;">' +
                     '<button type="button" onclick="vrAdicionar()" style="width:100%; background:#facc15; border:2px solid #000;">Lançar Pedido</button></div>' +
@@ -1632,12 +1691,13 @@
             if (!estado.vrOcultas) estado.vrOcultas = {};
             var vteste = souTeste();
             var itens = v.itens.slice(), forma = vteste ? 'Teste' : v.forma, total = vrTotal();
-            var vni = v.ni, vcompleto = v.completo;
+            var vni = v.ni, vcompleto = v.completo, vobsCli = vteste ? '' : limparObsCli(v.obsCli);
+            if (vobsCli) salvarObsCliente(vnome, vtel, vobsCli, true);
             v.enviando = true; vrDesenhar();
             estado.vrOcultas[chave] = Date.now();   // não aparece em Pessoas/Abertas enquanto fecha
             var url = API_URL + '?acao=venda_rapida&mesa=' + encodeURIComponent(chave) + '&forma=' + encodeURIComponent(forma) +
                 '&itens=' + encodeURIComponent(JSON.stringify(itens.map(function(i) { return { produto: i.produto, qnt: i.qnt, obs: i.obs || '' }; }))) +
-                (vteste ? '&teste=1' : '') + (vtel ? '&tel=' + encodeURIComponent(vtel) : (vni ? '&tel=ni' : '')) + (vnome ? '&nome=' + encodeURIComponent(vnome) : '');
+                (vteste ? '&teste=1' : '') + (vtel ? '&tel=' + encodeURIComponent(vtel) : (vni ? '&tel=ni' : '')) + (vnome ? '&nome=' + encodeURIComponent(vnome) : '') + (vobsCli ? '&ocli=' + encodeURIComponent(vobsCli) : '');
             // imprime e fecha a janela na hora; a planilha é atualizada em segundo plano (uma única chamada)
             var antigo = false;
             fetch(url).then(function(res) { return res.json(); }).then(function(r) {
@@ -1666,6 +1726,7 @@
             if (!estado.vrOcultas) estado.vrOcultas = {};
             estado.vrOcultas[chave] = Date.now();   // não aparece em Pessoas/Abertas enquanto fecha
             var vteste = souTeste(), vdescartar = false;
+            if (!vteste && limparObsCli(v.obsCli)) salvarObsCliente(vnome, vtel, v.obsCli);
             var itens = v.itens.slice(), forma = vteste ? 'Teste' : v.forma, total = vrTotal();
             var cadeia = Promise.resolve();
             itens.forEach(function(i) {
@@ -1717,6 +1778,8 @@
             if (!tel) { var cl = achaCliente(entrada); if (cl && cl.tel) tel = cl.tel; } // nome digitado por inteiro e igual a um cliente salvo
             fecharJanelaPessoa();
             criarPessoa(entrada);
+            if (estado.obsNova && !ehVipEnt) salvarObsCliente(entrada, tel, estado.obsNova);
+            estado.obsNova = '';
             // cliente salvo com telefone na aba Clientes: já vem preenchido no campo de telefone da comanda
             if (tel && tipoCampoTelefone(acharMesa(estado.mesaSelecionadaId)) === 'pessoa') { preencherTelDoCliente({ tel: String(tel) }); } // escreve direto no campo (renderizar() apagaria: ele relê o campo vazio)
         }
@@ -2477,7 +2540,8 @@
                 (tipoCampoTelefone(mesaSel) ? '<div style="background:#fff; border:2px solid #000; border-radius:0.5rem; padding:0.5rem; margin-bottom:0.75rem;">' + (tipoCampoTelefone(mesaSel) === 'mesa' ? '<label style="font-size:0.75rem;">Nome do cliente (opcional)</label><input type="text" id="input-nome-mesa" maxlength="40" autocomplete="off" value="' + esc(estado.nomeMesaCache || '') + '" oninput="sugerirNomeMesa(this.value)" style="width:100%; margin:0.25rem 0 0.4rem;"><div id="sug-mesa"></div>' : '') + '<label style="font-size:0.75rem;">Telefone do cliente (opcional, com DDD) — informe antes do 1º pedido</label><input type="tel" id="input-tel-pessoa" inputmode="numeric" maxlength="16" oninput="estado.telTocado = true" value="' + esc(estado.telNI ? '' : (estado.telCache || '')) + '" placeholder="Ex.: 11999998888"' + (estado.telNI ? ' disabled' : '') + ' style="width:100%; margin-top:0.25rem;"><label style="display:block; margin-top:0.4rem; font-size:0.85rem;"><input type="checkbox" style="width:auto; display:inline-block; margin-right:0.4rem;" id="tel-ni" onchange="telNaoInformado(this.checked)"' + (estado.telNI ? ' checked' : '') + '> Não informado (cliente não quis informar)</label></div>' : '') +
                 '<div class="form-grupo">' +
                     '<label style="font-size: 0.75rem;">SELECIONAR PRODUTO</label>' +
-                    '<select id="select-produto">' + opcoesHtml + '</select>' +
+                    '<input type="text" id="busca-produto" placeholder="🔍 Digite para buscar o produto..." autocomplete="off" oninput="buscaProduto(this, \'select-produto\')" style="width:100%; margin:0.2rem 0 0.3rem;">' +
+                    '<select id="select-produto" onchange="if(this.size>1)this.size=1;">' + opcoesHtml + '</select>' +
                     '<div style="margin-top: 0.5rem;"><label style="font-size:0.65rem;">Qtd Solicitada:</label><input type="number" id="input-qtd" value="' + estado.quantidadeCache + '" min="1" style="text-align: center;" oninput="estado.quantidadeCache = this.value"></div>' +
                     '<div style="margin-top: 0.5rem;"><label style="font-size:0.65rem;">Observação (ex.: sem cebola, sem gelo, sem álcool):</label><input type="text" id="input-obs" maxlength="60" placeholder="Opcional" value="' + esc(estado.obsCache) + '" oninput="estado.obsCache = this.value"></div>' +
                     '<button onclick="adicionarItem()" class="btn-lancar" style="margin-top:0.5rem;">Lançar Pedido</button>' +
