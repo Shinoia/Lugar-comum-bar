@@ -132,7 +132,7 @@
                 return res.clone().json().then(function(j) {
                     if (j && j.negado) {
                         CHAVE = ''; USUARIO = ''; guardarSessao('', '');
-                        pedirChave(j.off ? 'Seu acesso está desativado (off).' : 'Usuário ou senha incorretos.');
+                        pedirChave(j.off ? 'Seu acesso está desativado (off).' : ((j.bloqueado || j.desbloqueado) ? j.error : 'Usuário ou senha incorretos.'));
                     }
                     return res;
                 }).catch(function() { return res; });
@@ -149,7 +149,8 @@
                 '<label style="font-size:0.85rem;">Usuário:</label>' +
                 '<input type="text" id="input-usuario" autocomplete="username" style="width:100%; margin:0.25rem 0 0.5rem;">' +
                 '<label style="font-size:0.85rem;">Senha:</label>' +
-                '<input type="password" id="input-chave" autocomplete="current-password" style="width:100%; margin:0.25rem 0 0.75rem;" onkeydown="if(event.key===\'Enter\') entrarComChave()">' +
+                '<input type="password" id="input-chave" autocomplete="current-password" style="width:100%; margin:0.25rem 0 0.4rem;" onkeydown="if(event.key===\'Enter\') entrarComChave()">' +
+                '<label style="display:block; font-size:0.85rem; margin-bottom:0.75rem;"><input type="checkbox" id="chk-ver-senha" style="width:auto; display:inline-block; margin-right:0.4rem;" onchange="document.getElementById(\'input-chave\').type = this.checked ? \'text\' : \'password\'"> Mostrar senha</label>' +
                 '<button type="button" onclick="entrarComChave()" style="background:#facc15; border:2px solid #000; width:100%;">Entrar</button></div>';
             document.body.appendChild(el);
             document.body.classList.add('bloqueado');
@@ -2341,7 +2342,6 @@
 
         var cancelando = false;
         function cancelarItem(idItem, qtdRemover) {
-            if (cancelando) return;
             var p = estado.pedidosGlobais[idItem];
             if (!p || p.status === 'fechado') return;
             if (!p.linha) { alert('Esse pedido ainda está sendo gravado. Aguarde alguns segundos e tente de novo.'); return; }
@@ -2350,17 +2350,27 @@
                 ? 'Cancelar ' + p.qnt + 'x ' + p.produto + '?'
                 : 'Remover ' + q + ' un de ' + p.produto + '? (ficam ' + (p.qnt - q) + ')';
             if (!confirm(msg + '\nO estoque será devolvido.')) return;
-            cancelando = true;
+            // some da tela NA HORA; a planilha é atualizada em segundo plano (se falhar, volta e avisa)
+            var reg = { sig: sigItem(p), q: q, qo: Number(p.qnt), t: Date.now() };
+            if (!estado.cancelPend) estado.cancelPend = [];
+            estado.cancelPend.push(reg);
+            estado.pedidosGlobais = aplicarFechando(estado.pedidosGlobais);
+            processarPedidos();
+            renderizar();
+            var desfazer = function(txt) {
+                estado.cancelPend = (estado.cancelPend || []).filter(function(e) { return e !== reg; });
+                if (txt) alert(txt);
+                sincronizar();
+            };
             fetch(API_URL + '?acao=cancelar_item&linha=' + encodeURIComponent(p.linha) + '&mesa=' + encodeURIComponent(p.mesa) +
                   '&produto=' + encodeURIComponent(p.produto) + '&qnt=' + encodeURIComponent(q))
                 .then(function(res) { return res.json(); })
                 .then(function(r) {
-                    cancelando = false;
                     if (r && r.result === 'success') sincronizar();
-                    else if (r && r.error) { alert(r.error); sincronizar(); }
-                    else alert('Não foi possível cancelar. Confira se a versão nova do Codigo.gs está implantada.');
+                    else if (r && r.error) desfazer(r.error);
+                    else desfazer('Não foi possível cancelar. Confira se a versão nova do Codigo.gs está implantada.');
                 })
-                .catch(function() { cancelando = false; alert('Falha de conexão. Tente novamente.'); });
+                .catch(function() { desfazer('Falha de conexão. O item não foi cancelado; tente novamente.'); });
         }
 
         function encerrarTodas() {
@@ -2476,16 +2486,29 @@
         // Só escondem os itens que já existiam no momento do fechamento; pedido novo na mesma mesa aparece normal.
         function sigItem(p) { return String(p.mesa) + '|' + String(p.produto) + '|' + String(p.pedidoEm || ''); }
         function aplicarFechando(lista) {
-            var f = estado.fechando || {}, ks = Object.keys(f), vo = estado.vrOcultas || {};
-            if (!ks.length && !Object.keys(vo).length) return lista;
-            return lista.filter(function(p) {
+            var f = estado.fechando || {}, ks = Object.keys(f), vo = estado.vrOcultas || {}, cp = estado.cancelPend || [];
+            if (!ks.length && !Object.keys(vo).length && !cp.length) return lista;
+            var base = lista.filter(function(p) {
                 if (p.status === 'fechado') return true;
                 if (vo[String(p.mesa)] && Date.now() - vo[String(p.mesa)] < 180000) return false;
                 for (var i = 0; i < ks.length; i++) { if (f[ks[i]].sigs[sigItem(p)]) return false; }
                 return true;
             });
+            if (!cp.length) return base;
+            // itens cancelados aqui: somem na hora e ficam assim até a planilha confirmar
+            var out = [];
+            base.forEach(function(p) {
+                if (p.status !== 'fechado') {
+                    var sg = sigItem(p), rest = Number(p.qnt), tocou = false;
+                    cp.forEach(function(e) { if (e.sig === sg && Number(p.qnt) === e.qo) { rest -= e.q; tocou = true; } });
+                    if (tocou) { if (rest <= 0) return; var c = {}; for (var kk in p) c[kk] = p[kk]; c.qnt = rest; out.push(c); return; }
+                }
+                out.push(p);
+            });
+            return out;
         }
         function limparFechando(brutos) {
+            if (estado.cancelPend) estado.cancelPend = estado.cancelPend.filter(function(e) { return Date.now() - e.t < 60000 && brutos.some(function(p) { return p.status !== 'fechado' && sigItem(p) === e.sig && Number(p.qnt) === e.qo; }); });
             var f = estado.fechando || {};
             Object.keys(f).forEach(function(k) {
                 var e = f[k];
@@ -2659,7 +2682,12 @@
         }
         function mudarDestino(v) { gravarConfig('destino', v); }
         function imprimirLocal(html) {
+            // segurança: o recibo é impresso num iframe SEM scripts (sandbox) e o HTML é limpo antes; assim um pedido de impressão malicioso não roda código nem lê a senha salva
+            html = String(html || '').replace(/<\s*script[\s\S]*?(<\s*\/\s*script\s*>|$)/gi, '')
+                .replace(/<\s*\/?\s*(iframe|object|embed|link|meta|base|form|applet|frame|frameset|svg|math|input|button|textarea|select)\b[^>]*>/gi, '')
+                .replace(/\son[a-z]+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, '').replace(/(javascript|vbscript|data)\s*:/gi, 'bloqueado:');
             var f = document.createElement('iframe');
+            f.setAttribute('sandbox', 'allow-same-origin allow-modals');
             f.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0';
             document.body.appendChild(f);
             var d = f.contentWindow.document;
