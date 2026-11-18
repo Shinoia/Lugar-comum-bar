@@ -344,6 +344,8 @@
 
         // ---- modo TESTE (login Queen): pedidos marcados com [TESTE] na observação, mostrados em roxo com a etiqueta TESTE ----
         function souTeste() { return !!(estado.usuario && estado.usuario.supreme); } // papel supreme (coluna C da aba Key)
+        // Comanda 013 com o nome Santos é a comanda de teste liberada para QUALQUER usuário (nunca entra no caixa nem mexe no estoque)
+        function ehMesaTesteFixa(m) { return /Comanda\s*0*13\s*-\s*Santos/i.test(String(m || '')); }
         function etiquetaTeste() { return '<b style="background:#6d28d9; color:#fff; border-radius:0.3rem; padding:0 0.4rem; font-size:0.75rem; letter-spacing:0.05em;">TESTE</b>'; }
         function mesaTeste(m) { return !!(m && m.itens && m.itens.some(function(it) { return it.teste; })); }
         // cores da lista de produtos: caixa = verde suave, bar = azul suave, cozinha = vermelho suave (+ coração no texto, p/ iPad que ignora a cor)
@@ -2214,7 +2216,7 @@
                 status: 'pendente',
                 statusPreparo: 'pendente',
                 obs: ov ? '' : limparObs(estado.obsCache),
-                teste: souTeste()
+                teste: souTeste() || ehMesaTesteFixa(idMesaFinal)
             };
 
             var base = estado.pedidosGlobais.filter(function(x) { return x.status !== 'fechado' && String(x.mesa) === String(novo.mesa) && x.produto === novo.produto; }).length;
@@ -2373,7 +2375,7 @@
             var linhas = m.itens.map(function(it) {
                 return '<div style="display:flex; justify-content:space-between; gap:0.5rem; font-size:0.85rem;"><span>' + it.qnt + 'x ' + esc(it.produto) + '</span><span>' + brl(it.qnt * it.preco) + '</span></div>';
             }).join('') || '<div style="font-size:0.85rem;">Sem itens lançados.</div>';
-            var teste = souTeste() && mesaTeste(m);
+            var teste = (souTeste() || ehMesaTesteFixa(m.id) || ehMesaTesteFixa(m.idExibicao)) && mesaTeste(m);
             var precisaForma = m.itens.length > 0 && !teste; // comanda de teste: pagamento opcional
             var botoes = '';
             if (teste) {
@@ -2465,7 +2467,7 @@
         function confirmarFechamento() {
             var f = estado.fechamento, mesaObj = f && acharMesa(f.id);
             if (!mesaObj) { fecharJanelaFechamento(); return; }
-            var teste = souTeste() && mesaTeste(mesaObj), descartar = false;
+            var teste = (souTeste() || ehMesaTesteFixa(mesaObj.id) || ehMesaTesteFixa(mesaObj.idExibicao)) && mesaTeste(mesaObj), descartar = false;
             if (teste) { var cd = document.getElementById('fech-descartar'); descartar = !cd || cd.checked; }   // supreme: só fecha a comanda de teste, sem Finalizar dia
             var precisaForma = mesaObj.itens.length > 0 && !teste;
             if (precisaForma && !f.forma) { alert('Selecione a forma de pagamento: Débito, Crédito, PIX ou Dinheiro.'); return; }
