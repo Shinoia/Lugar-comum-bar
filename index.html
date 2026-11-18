@@ -1151,10 +1151,10 @@
             // índio com arco e flecha: fica no topo, onde aparece "Clique em uma comanda ao lado para gerenciar"
             var indioPos = { x: W * 0.85, y: 90 };
             function lerIndio() {
-                var pEl = document.querySelector('.painel-lateral p'), pl = document.querySelector('.painel-lateral'), r = pEl ? pEl.getBoundingClientRect() : (pl ? pl.getBoundingClientRect() : null);
-                if (r && r.width > 0) { indioPos.x = r.left + r.width / 2; indioPos.y = pEl ? r.top + r.height / 2 + 11 * p : r.top + 26 * p; }
+                var pEl = document.querySelector('.painel-lateral p'), pl = document.querySelector('.painel-lateral'), r = pl ? pl.getBoundingClientRect() : null;
+                if (r && r.width > 0) { indioPos.x = r.left + r.width / 2; indioPos.y = pl ? pl.getBoundingClientRect().top : r.top; }
                 else { indioPos.x = W * 0.85; indioPos.y = 90; }
-                indioPos.y = Math.max(24 * p, Math.min(H - 4, indioPos.y)); indioPos.x = Math.max(8 * p, Math.min(W - 8 * p, indioPos.x));
+                indioPos.y = Math.max(26 * p, Math.min(H - 4, indioPos.y)); indioPos.x = Math.max(8 * p, Math.min(W - 8 * p, indioPos.x));
             }
             lerIndio();
             function desenharIndio(puxa, dir) {
@@ -1176,21 +1176,28 @@
                 var tx1 = bx - dir * 3 * p + Math.cos(dir > 0 ? -1.15 : Math.PI - 1.15) * 7 * p, ty1 = by + Math.sin(dir > 0 ? -1.15 : Math.PI - 1.15) * 7 * p, ty2 = by * 2 - ty1;
                 var mx2 = bx - dir * (puxa * 7 * p);
                 g.strokeStyle = '#eee'; g.lineWidth = 1; g.beginPath(); g.moveTo(tx1, ty1); g.lineTo(mx2, by); g.lineTo(tx1, ty2); g.stroke();
-                if (puxa > 0 && puxa < 2) { g.strokeStyle = '#7a5230'; g.lineWidth = Math.max(2, p * 0.6); g.beginPath(); g.moveTo(mx2, by); g.lineTo(mx2 + dir * 12 * p, by); g.stroke(); }
+                if (puxa > 0 && puxa < 2) setaDes(mx2 + dir * 15 * p, by, dir > 0 ? 0 : Math.PI, 30 * p);
                 if (puxa > 0) { g.fillStyle = cor; g.fillRect(Math.min(x, mx2), y - 12.5 * p, Math.abs(mx2 - x) + p, 1.5 * p); }
+            }
+            function setaDes(x, y, ang, L) { // flecha: haste, ponta de metal e penas; (x,y) = centro
+                g.save(); g.translate(x, y); g.rotate(ang);
+                g.strokeStyle = '#8b5a2b'; g.lineWidth = Math.max(3, p * 1.5); g.beginPath(); g.moveTo(-L * 0.5, 0); g.lineTo(L * 0.4, 0); g.stroke();
+                g.fillStyle = '#cfd5da'; g.beginPath(); g.moveTo(L * 0.58, 0); g.lineTo(L * 0.36, -L * 0.1); g.lineTo(L * 0.36, L * 0.1); g.closePath(); g.fill();
+                g.strokeStyle = '#333'; g.lineWidth = 1; g.stroke();
+                g.fillStyle = '#d4202a'; g.beginPath(); g.moveTo(-L * 0.5, 0); g.lineTo(-L * 0.36, -L * 0.13); g.lineTo(-L * 0.24, -L * 0.13); g.lineTo(-L * 0.34, 0); g.closePath(); g.fill();
+                g.beginPath(); g.moveTo(-L * 0.5, 0); g.lineTo(-L * 0.36, L * 0.13); g.lineTo(-L * 0.24, L * 0.13); g.lineTo(-L * 0.34, 0); g.closePath(); g.fill();
+                g.fillStyle = '#fff'; g.beginPath(); g.moveTo(-L * 0.34, 0); g.lineTo(-L * 0.24, -L * 0.13); g.lineTo(-L * 0.14, -L * 0.13); g.lineTo(-L * 0.22, 0); g.closePath(); g.fill();
+                g.beginPath(); g.moveTo(-L * 0.34, 0); g.lineTo(-L * 0.24, L * 0.13); g.lineTo(-L * 0.14, L * 0.13); g.lineTo(-L * 0.22, 0); g.closePath(); g.fill();
+                g.restore();
             }
             function animarFlecha(h) {
                 var ft = h.ft++, agora = Date.now(), k;
-                var pre = 26, voo = 22;
+                var pre = 26, voo = 42, LS = p * 30, AR = H * 0.05;
                 var hx = indioPos.x + h.dirI * 6 * p, hy = indioPos.y - 12 * p, tx = h.x, ty = h.y - BH * 0.55;
                 if (!h.dirI) h.dirI = tx >= indioPos.x ? 1 : -1;
                 if (ft >= pre && !h.boom) {
-                    var u = Math.min(1, (ft - pre) / voo), ax = hx + (tx - hx) * u, ay = hy + (ty - hy) * u - Math.sin(u * 3.14) * H * 0.04;
-                    g.save(); g.translate(ax, ay); g.rotate(Math.atan2(ty - hy, tx - hx));
-                    g.strokeStyle = '#7a5230'; g.lineWidth = Math.max(2, p * 0.7); g.beginPath(); g.moveTo(-8 * p, 0); g.lineTo(2 * p, 0); g.stroke();
-                    g.fillStyle = '#ccc'; g.beginPath(); g.moveTo(4 * p, 0); g.lineTo(1.5 * p, -p); g.lineTo(1.5 * p, p); g.closePath(); g.fill();
-                    g.fillStyle = '#d4202a'; g.fillRect(-8 * p, -p, 2 * p, 2 * p);
-                    g.restore();
+                    var u = Math.min(1, (ft - pre) / voo), ax = hx + (tx - hx) * u, ay = hy + (ty - hy) * u - Math.sin(u * Math.PI) * AR;
+                    setaDes(ax, ay, Math.atan2((ty - hy) - AR * Math.PI * Math.cos(u * Math.PI), tx - hx), LS);
                     if (u >= 1) {
                         h.boom = true; h.tFim = agora; j.cabecas++; h.estado = 'morto'; h.comCabeca = true; h.flechado = true; h.vx = 0;
                         h.sdir = tx >= hx ? 1 : -1;
