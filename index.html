@@ -720,7 +720,10 @@
             estado.obsHoje[semAcento(nome).toLowerCase()] = { d: z(d.getDate()) + '/' + z(d.getMonth() + 1), t: obs };
             var c = achaCliente(nome);
             if (!c) { c = { nome: nome, n: 0, tel: String(tel || '').replace(/\D/g, ''), obs: '' }; estado.clientes.push(c); }
-            if (semAcento(c.obs || '').indexOf(semAcento(obs)) < 0) c.obs = (c.obs ? c.obs + ' | ' : '') + z(d.getDate()) + '/' + z(d.getMonth() + 1) + ': ' + obs;
+            var hj = z(d.getDate()) + '/' + z(d.getMonth() + 1);   // só vale a obs. do dia: as de dias anteriores são descartadas
+            var dh = String(c.obs || '').split('|').map(function(e) { return e.replace(/^\s+|\s+$/g, ''); }).filter(function(e) { return e.indexOf(hj + ':') === 0; });
+            if (semAcento(dh.join(' | ')).toLowerCase().indexOf(semAcento(obs).toLowerCase()) < 0) dh.push(hj + ': ' + obs);
+            c.obs = dh.join(' | ');
             if (soLocal) return;
             var falha = function(m) { alert('Não foi possível salvar a observação do cliente na planilha' + (m ? ': ' + m : '') + '. Confira se o Código do Apps Script está atualizado.'); };
             fetch(API_URL + '?acao=cliente_obs&nome=' + encodeURIComponent(nome) + '&tel=' + encodeURIComponent(String(tel || '').replace(/\D/g, '')) + '&obs=' + encodeURIComponent(obs))
