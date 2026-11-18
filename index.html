@@ -1121,8 +1121,8 @@
                 if (a.cd > 0) a.cd--; if (b.cd > 0) b.cd--;
                 if (a.cd > 0 || b.cd > 0) return;
                 if (Math.abs(a.x - b.x) < BW * 1.3 && Math.abs(a.y - b.y) < BH * 0.8) {
-                    a.briga = b.briga = 40; a.cd = b.cd = 240;
-                    j.nuvem = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 - BH / 2, t: 40 };
+                    a.briga = b.briga = 90; a.cd = b.cd = 300;
+                    j.nuvem = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 - BH / 2, t: 90, par: [a, b] };
                     var sd = a.x < b.x ? -1 : 1;   // depois da briga, cada um foge para um lado
                     a.vx = sd * VEL * 1.6; b.vx = -sd * VEL * 1.6;
                 }
@@ -1291,6 +1291,7 @@
             }
             function animarMorte(h) {
                 var ft = h.ft++, agora = Date.now(), k, m = h.morte;
+                if (m === 'chicote') { if (h.tomba < 1.5) h.tomba += 0.07; if (agora - h.tFim >= 2200) h.acabou = true; return; }
                 if (m === 'flecha') { animarFlecha(h); return; }
                 if (m === 'vacina') { animarVacina(h, ft); return; }
                 if (m === 'tiro') { animarTiro(h, ft, agora); return; }
@@ -1418,6 +1419,7 @@
             }
             function desenharVilao(v) {
                 var d = v.dir, x = v.x, y = v.y, pas = Math.sin(v.andar * 0.5) * 1.6 * p, k = v.kind;
+                g.save(); if (v.fase === 'morto') { g.translate(x, y); g.rotate(1.5708 * d); g.translate(-x, -y); }
                 var terno = k === 'palhaco' ? '#1d4ed8' : (k === 'barao' ? '#7f1d1d' : '#7dd3fc'), calca = k === 'palhaco' ? '#facc15' : (k === 'barao' ? '#292524' : '#0f172a');
                 var larg = k === 'barao' ? 12 : 8;
                 g.fillStyle = calca; g.fillRect(x - 3.5 * p + pas * 0.5, y - 6 * p, 3 * p, 6 * p); g.fillRect(x + 0.5 * p - pas * 0.5, y - 6 * p, 3 * p, 6 * p);
@@ -1456,6 +1458,7 @@
                 g.fillStyle = '#f1c9a5'; g.fillRect(5 * p, -1.1 * p, 1.6 * p, 2.2 * p);
                 if (taser) { g.fillStyle = '#111'; g.fillRect(5.5 * p, -1.6 * p, 4.5 * p, 3.2 * p); g.fillStyle = '#facc15'; g.fillRect(6 * p, -1.1 * p, 2.5 * p, 2.2 * p); g.fillStyle = '#e5e7eb'; g.fillRect(10 * p, -0.7 * p, 1.2 * p, 1.4 * p); }
                 g.restore();
+                g.restore();
                 v.mx = sx + Math.cos(ang) * 11 * p; v.my = sy + Math.sin(ang) * 11 * p;   // boca do taser
             }
             function fioTaser(ax, ay, bx, by, tremer) {
@@ -1485,6 +1488,76 @@
                 j.vil = { kind: kind, x: lado > 0 ? W + BW * 2 : -BW * 2, y: H, dir: -lado, andar: 0, fase: 'entra', ft: 0, hx: h.x, hy: h.y,
                           alvoX: Math.max(BW * 2, Math.min(W - BW * 2, h.x + lado * BW * 3.5)), mx: 0, my: 0 };
             }
+            // ---------- pantera-negra (animal de verdade, o dobro do tamanho dos bonecos): clicou numa briga, ela chega e mata todos os envolvidos com uma chicotada de cauda ----------
+            function desenharPantera(pt) {
+                var d = pt.dir, x = pt.x, y = pt.y, k, i, perna = Math.sin(pt.andar * 0.45) * 2.2 * p, u = pt.fase === 'bate' ? Math.min(1, pt.ft / 24) : 0;
+                var cor = '#0b0b0f', cl = '#2a2a33';
+                // cauda (chicote): em repouso fica erguida para trás; na chicotada varre por cima do corpo até a frente
+                var bx = x - d * 13 * p, by = y - 10 * p, px = bx, py = by, ang, L = 3 * p, fr;
+                g.strokeStyle = cor; g.lineCap = 'round'; g.lineWidth = 2.4 * p; g.beginPath(); g.moveTo(bx, by);
+                for (i = 0; i < 9; i++) {
+                    fr = pt.fase === 'bate' ? Math.max(0, Math.min(1, u * 1.35 - i * 0.045)) : 0;
+                    ang = (3.14159 * 0.8) * (1 - fr) + (-0.15) * fr + (pt.fase === 'bate' ? 0 : Math.sin(pt.andar * 0.2 + i * 0.5) * 0.25);
+                    px += d * Math.cos(ang) * L; py -= Math.sin(ang) * L; g.lineTo(px, py);
+                }
+                g.stroke();
+                pt.tx = px; pt.ty = py;
+                // pernas
+                g.fillStyle = cor;
+                g.fillRect(x - 11 * p + perna, y - 8 * p, 3.2 * p, 8 * p); g.fillRect(x - 6 * p - perna, y - 8 * p, 3.2 * p, 8 * p);
+                g.fillRect(x + 5 * p + perna, y - 8 * p, 3.2 * p, 8 * p); g.fillRect(x + 10 * p - perna, y - 8 * p, 3.2 * p, 8 * p);
+                // corpo (elipse) e brilho
+                g.save(); g.translate(x, y - 10 * p); g.scale(1, 0.4); g.beginPath(); g.arc(0, 0, 14 * p, 0, 6.2832, false); g.restore(); g.fillStyle = cor; g.fill();
+                g.save(); g.translate(x, y - 11.5 * p); g.scale(1, 0.18); g.beginPath(); g.arc(0, 0, 10 * p, 0, 6.2832, false); g.restore(); g.fillStyle = cl; g.fill();
+                // cabeça virada para a frente
+                var hx = x + d * 14 * p, hy = y - 13 * p;
+                g.fillStyle = cor; g.beginPath(); g.arc(hx, hy, 4.6 * p, 0, 6.2832, false); g.fill();
+                g.fillRect(hx + (d > 0 ? 2 * p : -6 * p), hy, 4 * p, 3 * p);   // focinho
+                g.beginPath(); g.moveTo(hx - 3.6 * p, hy - 3 * p); g.lineTo(hx - 2.4 * p, hy - 6.4 * p); g.lineTo(hx - 0.6 * p, hy - 4 * p); g.closePath(); g.fill();
+                g.beginPath(); g.moveTo(hx + 3.6 * p, hy - 3 * p); g.lineTo(hx + 2.4 * p, hy - 6.4 * p); g.lineTo(hx + 0.6 * p, hy - 4 * p); g.closePath(); g.fill();
+                g.fillStyle = '#facc15'; g.beginPath(); g.arc(hx + d * 1.6 * p, hy - 1.2 * p, 1 * p, 0, 6.2832, false); g.fill(); g.beginPath(); g.arc(hx - d * 0.6 * p, hy - 1.2 * p, 0.9 * p, 0, 6.2832, false); g.fill();
+                g.fillStyle = '#fff'; g.fillRect(hx + d * 3.4 * p - (d > 0 ? 0 : p), hy + 2.2 * p, p, 1.2 * p);
+                // estalo no fim da chicotada
+                if (pt.fase === 'bate' && pt.ft >= 18 && pt.ft < 30) {
+                    g.strokeStyle = '#fff'; g.lineWidth = Math.max(1.5, p * 0.6);
+                    for (k = 0; k < 6; k++) { g.beginPath(); g.moveTo(pt.tx, pt.ty); g.lineTo(pt.tx + (Math.random() - 0.5) * p * 12, pt.ty + (Math.random() - 0.5) * p * 12); g.stroke(); }
+                }
+            }
+            function chamarPantera() {
+                var n = j.nuvem, lado = n.x < W / 2 ? 1 : -1, q, o, par = (n.par || []).slice();
+                for (q = 0; q < par.length; q++) {
+                    o = par[q]; o.condenado = true;
+                    if (o === j.heroi) o.fb = 99999; else if (o === j.vil) o.pausa = 99999; else o.briga = 99999;
+                }
+                n.t = 99999;
+                var py0 = H; for (q = 0; q < par.length; q++) { if (j.hs.indexOf(par[q]) >= 0) { py0 = Math.min(H, par[q].y); break; } }   // anda na mesma altura onde os bonecos brigam
+                j.pantera = { x: lado > 0 ? -20 * p : W + 20 * p, y: py0, dir: lado, andar: 0, fase: 'entra', ft: 0, alvoX: Math.max(10 * p, Math.min(W - 10 * p, n.x - lado * 22 * p)), par: par };
+            }
+            function chicotear(o) {
+                var agora = Date.now(), k, cx, cy;
+                o.condenado = false;
+                if (o === j.heroi) { o.fb = 0; o.estado = 'cai'; o.vy = 0; return; }
+                if (o === j.vil) { o.pausa = 0; o.fase = 'morto'; o.tm = agora; j.cabecas++; return; }
+                cx = o.x; cy = o.y - BH * 0.5;
+                o.briga = 0; o.estado = 'morto'; o.fase = 1; o.ft = 0; o.morte = 'chicote'; o.boom = true; o.tFim = agora; o.vx = 0; j.cabecas++;
+                for (k = 0; k < 26; k++) o.sang.push({ x: cx, y: cy, vx: (Math.random() - 0.5) * p * 4, vy: -Math.random() * p * 3, v: 35 + Math.random() * 30, c: '#b00000', s: Math.max(2, p) });
+            }
+            function passoPantera() {
+                var pt = j.pantera, sd, q;
+                if (!pt) return;
+                if (pt.fase === 'entra') {
+                    pt.x += pt.dir * VEL * 2.4; pt.andar++;
+                    if ((pt.dir > 0 && pt.x >= pt.alvoX) || (pt.dir < 0 && pt.x <= pt.alvoX)) { pt.fase = 'bate'; pt.ft = 0; }
+                } else if (pt.fase === 'bate') {
+                    pt.ft++;
+                    if (pt.ft === 20) { for (q = 0; q < pt.par.length; q++) chicotear(pt.par[q]); if (j.nuvem) j.nuvem.t = 0; }
+                    if (pt.ft >= 60) { pt.fase = 'sai'; pt.dir = -pt.dir; }
+                } else {
+                    pt.x += pt.dir * VEL * 2.0; pt.andar++;
+                    if (pt.x < -30 * p || pt.x > W + 30 * p) { j.pantera = null; return; }
+                }
+                desenharPantera(pt);
+            }
             function passoHeroi() {
                 var h = j.heroi, v = j.vil, agora = Date.now(), sd;
                 if (!h && j.heroiLib && agora >= (j.heroiQuando || 0)) { h = j.heroi = novoHeroi(); }
@@ -1499,8 +1572,8 @@
                         if (!(h.cd > 0)) for (oq = 0; oq < j.hs.length; oq++) {
                             ob = j.hs[oq];
                             if (ob.estado === 'vivo' && ob.fase === 0 && !(ob.cd > 0) && Math.abs(ob.x - h.x) < BW * 1.5) {
-                                h.fb = 40; h.cd = ob.cd = 240; ob.briga = 40; h.lutaDir = ob.x >= h.x ? 1 : -1; h.lutaY = ob.y - BH * 1.3;
-                                ob.vx = -h.lutaDir * VEL * 1.6; j.nuvem = { x: (ob.x + h.x) / 2, y: ob.y - BH * 0.9, t: 40 };
+                                h.fb = 90; h.cd = ob.cd = 300; ob.briga = 90; h.lutaDir = ob.x >= h.x ? 1 : -1; h.lutaY = ob.y - BH * 1.3;
+                                ob.vx = -h.lutaDir * VEL * 1.6; j.nuvem = { x: (ob.x + h.x) / 2, y: ob.y - BH * 0.9, t: 90, par: [ob, h] };
                                 break;
                             }
                         }
@@ -1523,6 +1596,8 @@
                 }
                 if (v) {
                     v.ft++;
+                    if (v.fase === 'morto') { if (agora - v.tm >= 2200) { j.vil = null; if (h && h.estado === 'alvo') h.estado = 'voa'; v = null; } }
+                    else {
                     if (h && (h.estado === 'alvo' || h.estado === 'choque' || h.estado === 'cai')) { v.hx = h.x; v.hy = h.y - 2 * p; }
                     if ((v.fase === 'entra' || v.fase === 'sai') && v.pausa > 0) { v.pausa--; }
                     else if (v.fase === 'entra' || v.fase === 'sai') {
@@ -1530,8 +1605,8 @@
                         for (oc = 0; oc < j.hs.length; oc++) { // cruzou com um personagem pelo caminho: briga
                             var ov2 = j.hs[oc];
                             if (ov2.estado === 'vivo' && ov2.fase === 0 && !(ov2.cd > 0) && !(v.cdb > 0) && Math.abs(ov2.x - v.x) < BW * 1.3 && ov2.y > H - BH * 1.5) {
-                                ov2.briga = 40; ov2.cd = 240; v.pausa = 40; v.cdb = 240; ov2.vx = (ov2.x >= v.x ? 1 : -1) * VEL * 1.6;
-                                j.nuvem = { x: (ov2.x + v.x) / 2, y: H - BH * 0.5, t: 40 }; break;
+                                ov2.briga = 90; ov2.cd = 300; v.pausa = 90; v.cdb = 300; ov2.vx = (ov2.x >= v.x ? 1 : -1) * VEL * 1.6;
+                                j.nuvem = { x: (ov2.x + v.x) / 2, y: H - BH * 0.5, t: 90, par: [ov2, v] }; break;
                             }
                         }
                     }
@@ -1555,6 +1630,7 @@
                             if (h && h.estado === 'choque') { fioTaser(v.mx, v.my, v.hx, v.hy, true); }
                             else { v.fase = 'espera'; }
                         }
+                    }
                     }
                     if (v) desenharVilao(v);
                 }
@@ -1616,6 +1692,7 @@
                     }
                 }
                 passoHeroi();
+                passoPantera();
                 g.fillStyle = '#fff'; g.font = 'bold 14px sans-serif'; g.textAlign = 'left';
                 g.fillText('Mortes: ' + j.cabecas, 10, H - 10);
                 g.textAlign = 'right'; g.font = '11px sans-serif';
@@ -1628,7 +1705,7 @@
                 for (q = j.hs.length - 1; q >= 0; q--) {
                     h = j.hs[q];
                     var alt = h.rasteja ? (h.forma === 'boi' ? 10 * p : 6 * p) : BH + p * 3, lar = h.rasteja ? BW * 1.5 : BW * 1.1;
-                    if (h.fase === 0 && h.estado === 'vivo' && Math.abs(px - h.x) < lar && py > h.y - alt && py < h.y + p * 3) return h;
+                    if (h.fase === 0 && h.estado === 'vivo' && !h.condenado && Math.abs(px - h.x) < lar && py > h.y - alt && py < h.y + p * 3) return h;
                 }
                 return null;
             }
@@ -1642,8 +1719,10 @@
             function limparTudo() { segs = []; lg.clearRect(0, 0, W, H); cur = null; }
             function descer(px, py) {
                 if (px > 170 && px < 330 && py > H - 26) { limparTudo(); return; } // [ limpar desenho ]
+                var nu = j.nuvem;
+                if (nu && nu.t > 0 && nu.par && !j.pantera && (px - nu.x) * (px - nu.x) + (py - nu.y) * (py - nu.y) < (BW * 3) * (BW * 3)) { chamarPantera(); j.toques = []; return; }
                 var he = j.heroi;
-                if (he && he.estado === 'voa' && Math.abs(px - he.x) < BW * 1.7 && Math.abs(py - he.y) < BH * 1.2) { matarHeroi(); j.toques = []; return; }
+                if (he && he.estado === 'voa' && !he.condenado && Math.abs(px - he.x) < BW * 1.7 && Math.abs(py - he.y) < BH * 1.2) { matarHeroi(); j.toques = []; return; }
                 var hit = acertou(px, py);
                 if (hit) {
                     var h = hit;
@@ -2058,7 +2137,10 @@
                         for (var li = 0; li < ma.itens.length; li++) {
                             var ia = ma.itens[li];
                             linhasAb += '<div style="display:flex; justify-content:space-between; gap:0.5rem; font-size:0.85rem;"><span>' + ia.qnt + 'x ' + esc(ia.produto) + (ia.obs ? ' <small>(📝 ' + esc(ia.obs) + ')</small>' : '') + '</span>' +
-                                '<span class="badge" style="background:' + corStatus(ia.statusPreparo || 'pendente') + ';">' + String(ia.statusPreparo || 'pendente').toUpperCase() + '</span>' +
+                                '<span style="display:flex; gap:0.3rem; align-items:center; flex-shrink:0;"><span class="badge" style="background:' + corStatus(ia.statusPreparo || 'pendente') + ';">' + String(ia.statusPreparo || 'pendente').toUpperCase() + '</span>' +
+                                (ia.statusPreparo === 'entregue'
+                                    ? '<button type="button" onclick="event.stopPropagation(); mudarEstadoPorId(' + ia.idItem + ', \'pendente\')" title="Voltar para pendente" style="background:#fff; border:2px solid #000; border-radius:0.4rem; padding:0.1rem 0.4rem; font-size:0.75rem; font-weight:bold; min-height:0;">↩</button>'
+                                    : '<button type="button" onclick="event.stopPropagation(); mudarEstadoPorId(' + ia.idItem + ', \'entregue\')" title="Marcar como entregue" style="background:#22c55e; border:2px solid #000; border-radius:0.4rem; padding:0.1rem 0.4rem; font-size:0.75rem; font-weight:bold; min-height:0;">✔ Entregue</button>') + '</span>' +
                                 '</div>';
                         }
                         var cartaoAb = '<div class="mesa-card ocupada' + (mesaTeste(ma) ? ' teste' : '') + (String(ma.id) === String(estado.mesaSelecionadaId) ? ' selecionada' : '') + ' cartao-aberto">' +
@@ -2706,9 +2788,9 @@
                     var blocoStatus = ehCx
                         ? '<span class="badge" style="background:' + corStatus(cxEntregue ? 'entregue' : 'pendente') + '; margin-top:2px; display:inline-block;">CAIXA: ' + (cxEntregue ? 'ENTREGUE' : 'LIBERAR AGORA') + '</span>'
                         : '<span class="badge" style="background:' + corStatus(stPreparo) + '; margin-top:2px; display:inline-block;">Status: ' + stPreparo.toUpperCase() + '</span>';
-                    var botaoCx = (ehCx && !cxEntregue)
+                    var botaoCx = !cxEntregue
                         ? '<button onclick="event.stopPropagation(); mudarEstadoPorId(' + item.idItem + ', \'entregue\')" style="background:#22c55e; border:2px solid #000; padding:0.3rem 0.6rem; font-weight:800;">✔ Entregue</button>'
-                        : '';
+                        : '<button onclick="event.stopPropagation(); mudarEstadoPorId(' + item.idItem + ', \'pendente\')" title="Voltar para pendente" style="background:#fff; border:2px solid #000; padding:0.2rem 0.5rem; font-size:0.75rem;">↩ Pendente</button>';
                     listaHtml += '<div class="item-row">' +
                         '<div><strong>' + item.qnt + 'x ' + esc(item.produto) + '</strong> ' + (item.teste ? etiquetaTeste() : '') + '<br>' +
                         '<small>Preço: ' + brl(item.preco) + ' | Subtotal: ' + brl(subtotal) + '</small>' + htmlObs(item.obs, false) + '<br>' + blocoStatus + '</div>' +
