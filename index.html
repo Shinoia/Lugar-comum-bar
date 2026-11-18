@@ -664,7 +664,7 @@
             if (!lista.length) return '<div style="font-size:0.8rem; color:#555;">Nenhum cliente com esse nome. Toque em Adicionar para criar.</div>';
             var aviso = avisoNomeRepetido(txt);
             return '<div style="border:2px solid #000; border-radius:0.5rem; overflow:hidden;">' + lista.map(function(c, i) {
-                return '<button type="button" data-nome="' + esc(c.nome) + '" data-tel="' + esc(c.tel || '') + '" onclick="selecionarSugestao(this.getAttribute(\'data-nome\'), this.getAttribute(\'data-tel\'))" style="display:block; width:100%; text-align:left; background:#fff; border:0; ' + (i ? 'border-top:1px solid #ccc; ' : '') + 'padding:0.5rem 0.75rem; border-radius:0; font-size:1rem; color:#000;">' + esc(c.nome) + sufixoTel(c) + (c.n ? ' <small style="color:#666;">(' + c.n + 'x)</small>' : '') + (c.obs ? '<br><small style="color:#92400e;">📝 ' + esc(c.obs) + '</small>' : '') + '</button>';
+                return '<button type="button" data-nome="' + esc(c.nome) + '" data-tel="' + esc(c.tel || '') + '" onclick="selecionarSugestao(this.getAttribute(\'data-nome\'), this.getAttribute(\'data-tel\'))" style="display:block; width:100%; text-align:left; background:#fff; border:0; ' + (i ? 'border-top:1px solid #ccc; ' : '') + 'padding:0.5rem 0.75rem; border-radius:0; font-size:1rem; color:#000;">' + esc(c.nome) + sufixoTel(c) + (c.n ? ' <small style="color:#666;">(' + c.n + 'x)</small>' : '') + '</button>';
             }).join('') + '</div>' + aviso;
         }
         function sugerirPessoas(txt) {
@@ -674,10 +674,24 @@
             mostrarObsCliente(txt, 'obs-cli-atual');
         }
         // Obs. do cliente (coluna D da aba Clientes): detalhe para reconhecer a pessoa (boné vermelho, camisa xadrez...)
+        // Só mostra obs. anteriores do cliente quando o que está sendo digitado no campo Obs. é parecido com alguma delas
+        function htmlObsSimilar(nome, txt) {
+            var c = achaCliente(nome), digit = semAcento(limparObsCli(txt)).toLowerCase();
+            if (!c || !c.obs || digit.length < 2) return '';
+            var toks = digit.split(' ').filter(function(w) { return w.length >= 3; });
+            var achadas = String(c.obs).split('|').map(function(e) { return e.replace(/^\s+|\s+$/g, ''); }).filter(function(e) {
+                var s = semAcento(e).toLowerCase();
+                if (s.indexOf(digit) >= 0) return true;
+                for (var k = 0; k < toks.length; k++) if (s.indexOf(toks[k]) >= 0) return true;
+                return false;
+            });
+            if (!achadas.length) return '';
+            return '<div style="background:#fef3c7; border:2px solid #b45309; border-radius:0.5rem; padding:0.4rem 0.5rem; margin-bottom:0.5rem; font-size:0.8rem; color:#000;">📝 Parecido com obs. anterior: <b>' + esc(achadas.join(' | ')) + '</b></div>';
+        }
         function mostrarObsCliente(nome, boxId) {
             var b = document.getElementById(boxId); if (!b) return;
-            var c = achaCliente(nome);
-            b.innerHTML = (c && c.obs) ? '<div style="background:#fef3c7; border:2px solid #b45309; border-radius:0.5rem; padding:0.4rem 0.5rem; margin-bottom:0.5rem; font-size:0.8rem; color:#000;">📝 Obs. anteriores: <b>' + esc(c.obs) + '</b></div>' : '';
+            var o = document.getElementById(boxId === 'vr-obs-atual' ? 'vr-obscli' : 'input-obs-cli');
+            b.innerHTML = htmlObsSimilar(nome, o ? o.value : '');
         }
         function selecionarSugestao(nome, tel) {
             var i = document.getElementById('input-nova-pessoa'); if (i) i.value = nome;
@@ -1804,7 +1818,7 @@
                 '<div id="sugestoes-pessoa" style="margin-bottom:0.5rem; max-height:30vh; overflow:auto;">' + htmlSugestoes('') + '</div>' +
                 '<div id="obs-cli-atual"></div>' +
                 '<label style="font-size:0.8rem;">Obs. do cliente (ex.: boné vermelho, camisa xadrez) — soma ao que já existe:</label>' +
-                '<input type="text" id="input-obs-cli" maxlength="80" autocomplete="off" placeholder="Opcional" style="width:100%; margin:0.25rem 0 0.75rem;" onkeydown="if(event.key===\'Enter\') confirmarNovaComanda()">' +
+                '<input type="text" id="input-obs-cli" maxlength="80" autocomplete="off" placeholder="Opcional" style="width:100%; margin:0.25rem 0 0.75rem;" oninput="mostrarObsCliente(document.getElementById(\'input-nova-pessoa\').value, \'obs-cli-atual\')" onkeydown="if(event.key===\'Enter\') confirmarNovaComanda()">' +
                 '<div style="display:flex; gap:0.5rem; justify-content:flex-end;">' +
                     '<button type="button" onclick="fecharJanelaPessoa()" style="background:#fff; border:2px solid #000;">Cancelar</button>' +
                     '<button type="button" onclick="confirmarNovaComanda()" style="background:#facc15; border:2px solid #000;">Abrir</button>' +
@@ -1878,7 +1892,7 @@
                     return '<option value="' + esc(p.nome) + '" style="background-color:' + est.bg + '; color:#000;"' + (v.sel === p.nome ? ' selected' : '') + '>' + est.ico + esc(p.nome) + ' - ' + brl(p.preco) + '</option>';
                 }).join('');
             if (!CARDAPIO_OK) opc = '<option value="">⏳ Carregando produtos da planilha...</option>';
-            var oc0 = achaCliente(v.nome), obsAtualHtml = (oc0 && oc0.obs) ? '<div style="background:#fef3c7; border:2px solid #b45309; border-radius:0.5rem; padding:0.4rem 0.5rem; margin-bottom:0.4rem; font-size:0.8rem; color:#000;">📝 Obs. anteriores: <b>' + esc(oc0.obs) + '</b></div>' : '';
+            var obsAtualHtml = htmlObsSimilar(v.nome, v.obsCli);
             var itens = v.itens.map(function(i, k) {
                 return '<div style="display:flex; justify-content:space-between; align-items:center; gap:0.5rem; padding:0.4rem 0; border-bottom:1px solid rgba(0,0,0,0.25);">' +
                     '<div><b>' + i.qnt + 'x ' + esc(i.produto) + '</b><br><small>' + brl(i.preco) + ' | Subtotal: ' + brl(i.qnt * i.preco) + (i.obs ? ' | ' + esc(i.obs) : '') + '</small></div>' +
@@ -1894,7 +1908,7 @@
                 '<div style="background:#ef4444; border-radius:0.5rem; padding:0.75rem; margin-bottom:0.6rem;"><label style="font-size:0.75rem;">Nome *</label><input type="text" id="vr-nome" maxlength="40" autocomplete="off" oninput="vrNome(this.value)" value="' + esc(v.nome || '') + '" style="width:100%; margin:0.2rem 0 0.4rem;"><div id="vr-sug"></div>' +
                     '<label style="font-size:0.75rem;">Telefone (opcional, com DDD)</label><input type="tel" id="vr-tel" inputmode="numeric" maxlength="16" value="' + esc(v.ni ? '' : (v.tel || '')) + '"' + (v.ni ? ' disabled' : '') + ' style="width:100%; margin:0.2rem 0;"><label style="display:block; font-size:0.85rem;"><input type="checkbox" style="width:auto; display:inline-block; margin-right:0.4rem;" id="vr-ni" onchange="vrNI(this.checked)"' + (v.ni ? ' checked' : '') + '> Não informado</label></div>' +
                 '<div style="background:#ef4444; border-radius:0.5rem; padding:0.75rem; margin-bottom:0.6rem;"><div id="vr-obs-atual">' + obsAtualHtml + '</div>' +
-                    '<label style="font-size:0.75rem;">Obs. do cliente (ex.: boné vermelho, camisa xadrez) — soma ao que já existe</label><input type="text" id="vr-obscli" maxlength="80" autocomplete="off" value="' + esc(v.obsCli || '') + '" placeholder="Opcional" style="width:100%; margin:0.2rem 0 0;"></div>' +
+                    '<label style="font-size:0.75rem;">Obs. do cliente (ex.: boné vermelho, camisa xadrez) — soma ao que já existe</label><input type="text" id="vr-obscli" maxlength="80" autocomplete="off" value="' + esc(v.obsCli || '') + '" placeholder="Opcional" style="width:100%; margin:0.2rem 0 0;" oninput="mostrarObsCliente(estado.vr ? estado.vr.nome : \'\', \'vr-obs-atual\')"></div>' +
                 '<div style="background:#ef4444; border-radius:0.5rem; padding:0.75rem; margin-bottom:0.6rem;">' +
                     '<label style="font-size:0.75rem;">SELECIONAR PRODUTO</label><input type="text" id="vr-busca" placeholder="🔍 Digite para buscar o produto..." autocomplete="off" oninput="buscaProduto(this, \'vr-produto\')" style="width:100%; margin:0.2rem 0 0.3rem;"><select id="vr-produto" onchange="if(this.size>1)this.size=1;" style="width:100%; margin:0.2rem 0 0.4rem;">' + opc + '</select>' +
                     '<label style="font-size:0.75rem;">Qtd Solicitada:</label><input type="number" id="vr-qtd" min="1" value="' + esc(String(v.qtd)) + '" style="width:100%; margin:0.2rem 0 0.4rem; text-align:center;">' +
