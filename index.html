@@ -893,21 +893,103 @@
                     if (r.width < 8 || r.height < 8 || r.bottom < 0 || r.top > H || r.right < 0 || r.left > W) continue;
                     out.push({ l: r.left, t: r.top, r: r.right, b: r.bottom });
                 }
-                obst = out;
+                obstUI = out;
             }
-            lerObstaculos();
+            // ---------- blocos: a cada morte cai 1 bloco quadrado (largura do jacaré); os bonecos pulam nele e dá para arrastar ----------
+            var obstUI = [], blocos = [], BLK = 24 * p, arr = null;
+            function montarObst() { // obstáculos = elementos da página + blocos parados
+                var k, b; obst = obstUI.slice();
+                for (k = 0; k < blocos.length; k++) { b = blocos[k]; if (!b.cai && !b.arrasta) obst.push({ l: b.l, t: b.t, r: b.l + BLK, b: b.t + BLK, bloco: b }); }
+            }
+            function suporteBloco(b, base) { // topo mais próximo (>= base) que sustenta o bloco; chão = H
+                var best = H, k, o, q, r = b.l + BLK;
+                for (k = 0; k < obstUI.length; k++) { o = obstUI[k]; if (r > o.l + 1 && b.l < o.r - 1 && o.t >= base - 0.5 && o.t >= BLK && o.t < best) best = o.t; }
+                for (q = 0; q < blocos.length; q++) { o = blocos[q]; if (o === b || o.cai || o.arrasta) continue; if (r > o.l + 1 && b.l < o.l + BLK - 1 && o.t >= base - 0.5 && o.t < best) best = o.t; }
+                return best;
+            }
+            function criarBloco(x) {
+                if (blocos.length >= 30) blocos.shift();
+                blocos.push({ l: Math.max(2, Math.min(W - BLK - 2, x - BLK / 2)), t: -BLK, vy: 0, cai: true, arrasta: false });
+            }
+            function empilhar(b) { // se pousou dentro de outro bloco (queda simultânea), sobe para cima dele
+                var q, o, mudou = true, n = 0;
+                while (mudou && n++ < 20) {
+                    mudou = false;
+                    for (q = 0; q < blocos.length; q++) { o = blocos[q]; if (o === b || o.cai || o.arrasta) continue; if (b.l + BLK > o.l + 1 && b.l < o.l + BLK - 1 && b.t + BLK > o.t + 1 && b.t < o.t + BLK - 1) { b.t = o.t - BLK; mudou = true; } }
+                }
+            }
+            function afastarDoBloco(b) { // quem estiver dentro de onde o bloco pousou é empurrado para o lado
+                var k, h, cx = b.l + BLK / 2;
+                for (k = 0; k < j.hs.length; k++) {
+                    h = j.hs[k];
+                    if (h.estado !== 'vivo' && h.estado !== 'parado') continue;
+                    if (h.x + BW / 2 > b.l && h.x - BW / 2 < b.l + BLK && h.y > b.t + 1 && h.y - BH < b.t + BLK) {
+                        h.x = h.x < cx ? b.l - BW / 2 - 1 : b.l + BLK + BW / 2 + 1;
+                        h.x = Math.max(BW / 2, Math.min(W - BW / 2, h.x));
+                    }
+                }
+            }
+            function passoBlocos() {
+                var k, b, sup, nb, lado;
+                for (k = 0; k < blocos.length; k++) {
+                    b = blocos[k];
+                    if (b.arrasta) continue;
+                    if (b.cai) {
+                        b.vy += GRAV; if (b.vy > 14) b.vy = 14; nb = b.t + BLK + b.vy; sup = suporteBloco(b, b.t + BLK - 0.5);
+                        if (nb >= sup) { b.t = sup - BLK; b.vy = 0; b.cai = false; empilhar(b); afastarDoBloco(b); }
+                        else b.t += b.vy;
+                    }
+                }
+                montarObst();
+                for (k = 0; k < blocos.length; k++) {
+                    b = blocos[k];
+                    g.fillStyle = '#6b4423'; g.fillRect(b.l, b.t, BLK, BLK);
+                    g.fillStyle = '#b8803f'; g.fillRect(b.l + 3, b.t + 3, BLK - 6, BLK - 6);
+                    g.strokeStyle = '#7a4d26'; g.lineWidth = 3; g.beginPath(); g.moveTo(b.l + 4, b.t + 4); g.lineTo(b.l + BLK - 4, b.t + BLK - 4); g.moveTo(b.l + BLK - 4, b.t + 4); g.lineTo(b.l + 4, b.t + BLK - 4); g.stroke();
+                    g.fillStyle = '#e0b070'; g.fillRect(b.l + 3, b.t + 3, BLK - 6, 2);
+                }
+            }
+            lerObstaculos(); montarObst();
             var j = { raf: 0, cabecas: 0, toques: [], fim: false, el: el, hs: [], t0: Date.now(), ic: ic, heroiLib: true, heroiQuando: Date.now() + 6000, oncaQuando: Date.now() + 9000 };   // o herói voador surge 1 s depois do último personagem (4º em 5 s)
             jogo = j;
+            j.blocos = blocos; j.criarBloco = criarBloco; j.getObst = function() { return obst; }; j.bate = bate;
             function novo(tipo) {
                 tipo = tipo || 0;
                 var cores = ['#009c3b', '#2b2f3a', '#1d3f9e', '#222', '#7a5a3a'];   // 0 jogador verde/amarelo, 1 político, 2 Tio Sam, 3 revolucionário, 4 senhor grisalho (morre só para a ema)
                 return { x: 20 + Math.random() * (W - 40), y: 0, vx: VEL * (tipo === 1 ? 1.3 : 1) * (Math.random() < 0.5 ? -1 : 1), vy: 0, solo: false, andar: 0, dir: 1, estado: 'vivo', t: 0, cab: null, sang: [], cor: cores[tipo], tipo: tipo, pulo: tipo === 2 ? 0.03 : (tipo === 1 ? 0.02 : 0.012), briga: 0, cd: 0, fase: 0, ft: 0, acabou: false, morte: '', mortes: 0, tomba: 0, forma: 'humano', estagio: 0, jc: 0, rasteja: false, oculto: false };
+            }
+            function nasceNaComanda(h) { // os bonecos surgem de dentro da janela "+ Nova comanda" e caem dali
+                var bt = document.querySelector('button[onclick="novaComanda()"]'), r, k, tent;
+                h.vy = 0; h.solo = false;
+                if (bt) {
+                    r = bt.getBoundingClientRect();
+                    if (r.width > 8 && r.bottom > 0 && r.top < H && r.right > 0 && r.left < W) {
+                        for (tent = 0; tent < 12; tent++) {
+                            h.x = Math.max(BW, Math.min(W - BW, r.left + r.width * (0.2 + Math.random() * 0.6)));
+                            h.y = Math.min(H, r.bottom + BH + 2);
+                            for (k = 0; k < 30 && bate(h.x, h.y) && h.y < H; k++) h.y += BH * 0.3;
+                            if (!bate(h.x, h.y)) return;
+                        }
+                        return;
+                    }
+                }
+                h.y = 0;
             }
             function bate(x, y) { // caixa do corpo com pés em (x,y) bate em algum ícone?
                 var l = x - BW / 2, r = x + BW / 2, t = y - BH, bo = y, k, o;
                 for (k = 0; k < obst.length; k++) { o = obst[k]; if (r > o.l && l < o.r && bo > o.t && t < o.b) return o; }
                 return null;
             }
+            function cairParado(h) { // enquanto briga (parado no lugar) ainda obedece a gravidade: se o bloco sair de baixo, cai
+                var yAnt = h.y, o;
+                h.vy += GRAV; h.y += h.vy; h.solo = false;
+                o = bate(h.x, h.y);
+                if (o) { if (h.vy >= 0) { h.y = o.t; h.vy = 0; h.solo = true; } else { h.y = yAnt; h.vy = 0; } }
+                else pousarNoDesenho(h, yAnt);
+                if (h.y >= H) { h.y = H; h.vy = 0; h.solo = true; }
+            }
+            function noChao(o) { return o.y >= H - 3; }
+            function todosNoChao(par) { var q; for (q = 0; q < par.length; q++) if (j.hs.indexOf(par[q]) >= 0 && !noChao(par[q])) return false; return true; }
             function mover(h) {
                 var o;
                 // horizontal
@@ -933,7 +1015,8 @@
                 o = bate(h.x, h.y);
                 if (o) {
                     var degrau = h.y - o.t; // quanto o obstáculo é mais alto que os pés
-                    if (h.solo && degrau < BH * 3.2 && !h.rasteja) h.vy = -velPulo(degrau + BH * 0.9); // pula por cima
+                    if (h.solo && degrau < BH * 3.2 && !h.rasteja) { h.vy = -velPulo(degrau + BH * 0.9); h.x = xAnt; }   // pula por cima (espera encostado enquanto sobe)
+                    else if (!h.solo && h.vy < 0 && degrau < BH * 3.2 && !h.rasteja) h.x = xAnt;
                     else { h.x = h.vx > 0 ? o.l - BW / 2 - 0.5 : o.r + BW / 2 + 0.5; h.vx = -h.vx; }
                     if (bate(h.x, h.y) && !h.solo) h.x -= h.vx;
                 }
@@ -1165,19 +1248,84 @@
             function checarBriga(a, b) {
                 if (a.cd > 0) a.cd--; if (b.cd > 0) b.cd--;
                 if (a.cd > 0 || b.cd > 0) return;
+                if (j.nuvem && j.nuvem.t > 0) return;   // só existe uma confusão por vez: quem passar por ela entra nela
                 if (Math.abs(a.x - b.x) < BW * 1.3 && Math.abs(a.y - b.y) < BH * 0.8) {
                     a.briga = b.briga = 90; a.cd = b.cd = 300;
                     j.nuvem = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 - BH / 2, t: 90, par: [a, b] };
-                    if (!j.pantera && !j.onca && Date.now() >= (j.oncaQuando || 0) && a.tipo !== 4 && b.tipo !== 4 && a.forma === 'humano' && b.forma === 'humano' && Math.random() < 0.6) { chamarOnca(); return; }
+                    if (!j.pantera && !j.onca && Date.now() >= (j.oncaQuando || 0) && a.tipo !== 4 && b.tipo !== 4 && a.forma === 'humano' && b.forma === 'humano' && noChao(a) && noChao(b) && Math.random() < 0.6) { chamarOnca(); return; }
                     var sd = a.x < b.x ? -1 : 1;   // depois da briga, cada um foge para um lado
                     a.vx = sd * VEL * 1.6; b.vx = -sd * VEL * 1.6;
                 }
             }
+            function juntarBriga() { // quem cruza com uma confusão entra nela; ela só acaba 1,5 s depois de o último entrar
+                var n = j.nuvem, k, c, q, m, em = j.emaR, fugir;
+                if (!n || n.t <= 0 || n.onca || j.pantera || !n.par) return;
+                if (!n.raio && n.t > 1000) return;
+                var cand = j.hs.slice(); if (em && n.par.indexOf(em) < 0 && em.pausa <= 0) cand.push(em);
+                for (k = 0; k < cand.length; k++) {
+                    c = cand[k];
+                    if (n.par.indexOf(c) >= 0) continue;
+                    if (c !== em && (c.estado !== 'vivo' || c.fase !== 0 || c.condenado || c.briga > 0)) continue;
+                    if (Math.abs(c.x - n.x) < BW * 2.3 && Math.abs((c === em ? H : c.y) - (n.y + BH / 2)) < BH * 0.9) {
+                        n.par.push(c); fugir = c.x < n.x ? -1 : 1;
+                        if (c === em) { em.pausa = n.raio ? 99999 : 90; em.dir = fugir; } else { c.briga = n.raio ? 99999 : 90; c.cd = 300; c.vx = fugir * VEL * 1.5; c.x = n.x + fugir * BW * (0.4 + Math.random() * 0.9); }
+                        if (!n.raio) {
+                            n.t = 90;   // reinicia o tempo da confusão para todos
+                            for (q = 0; q < n.par.length; q++) { m = n.par[q]; if (m === em) em.pausa = 90; else if (j.hs.indexOf(m) >= 0) m.briga = 90; }
+                        }
+                    }
+                }
+                if (!n.raio && n.par.length >= 3) { // 3 ou mais: o índio faz fumaça e chama os raios
+                    n.raio = true; n.t = 99999; j.fumaca = { t: 0, puffs: [] };
+                    for (q = 0; q < n.par.length; q++) { m = n.par[q]; if (m === em) em.pausa = 99999; else if (j.hs.indexOf(m) >= 0) m.briga = 99999; }
+                }
+            }
+            function passoFumaca() {
+                var fu = j.fumaca, n = j.nuvem, k, pf, q, m, agora = Date.now(), ok = n && n.raio && n.t > 0;
+                if (!fu) return;
+                if (!ok) { j.fumaca = null; return; }
+                fu.t++;
+                for (k = 0; k < 2; k++) fu.puffs.push({ x: indioPos.x + (Math.random() - 0.5) * 4 * p, y: indioPos.y - 14 * p, vx: (n.x > indioPos.x ? 1 : -1) * (0.2 + Math.random() * 0.4), vy: -0.5 - Math.random() * 0.5, r: 2 * p, a: 0.9 });
+                g.fillStyle = 'rgba(20,20,30,' + (0.28 * Math.min(1, fu.t / 100)) + ')'; g.fillRect(0, 0, W, H);   // o céu escurece
+                for (k = fu.puffs.length - 1; k >= 0; k--) {
+                    pf = fu.puffs[k]; pf.x += pf.vx; pf.y += pf.vy; pf.r += 0.12 * p * 0.5; pf.a -= 0.008;
+                    if (pf.a <= 0) { fu.puffs.splice(k, 1); continue; }
+                    g.fillStyle = 'rgba(210,210,215,' + pf.a + ')'; g.beginPath(); g.arc(pf.x, pf.y, pf.r, 0, 6.2832, false); g.fill();
+                }
+                if (fu.t >= 130) { // caem os raios: todos os que brigam morrem (o senhor grisalho e a ema não)
+                    for (q = 0; q < n.par.length; q++) {
+                        m = n.par[q];
+                        if (m === j.emaR) { m.pausa = 0; continue; }
+                        if (j.hs.indexOf(m) < 0) continue;
+                        m.condenado = false; m.briga = 0;
+                        if (m.tipo === 4 || m.estado !== 'vivo') continue;
+                        m.estado = 'parado'; m.vx = 0; m.fase = 1; m.ft = 0; m.morte = 'raio'; m.boom = true; m.tFim = agora; j.cabecas++;
+                    }
+                    n.t = 0; j.fumaca = null;
+                }
+            }
+            function animarRaio(h, ft, agora) {
+                var k, x = h.x, y0 = h.y - BH * 0.9, yy, xx, i;
+                if (ft < 3) { g.fillStyle = 'rgba(255,255,255,0.45)'; g.fillRect(0, 0, W, H); }
+                if (ft < 18) { // raio do céu até a cabeça
+                    for (i = 0; i < 2; i++) {
+                        g.strokeStyle = i ? '#fff' : '#ffe066'; g.lineWidth = i ? Math.max(1.5, p) : Math.max(3, p * 2.4); g.beginPath(); xx = x + (Math.random() - 0.5) * 6 * p; g.moveTo(xx, 0);
+                        for (yy = 0; yy < y0; yy += 14 + Math.random() * 14) { xx = x + (Math.random() - 0.5) * 9 * p; g.lineTo(xx, yy); }
+                        g.lineTo(x, y0); g.stroke();
+                    }
+                }
+                if (ft === 6) {
+                    h.estado = 'morto'; h.vx = 0;
+                    for (k = 0; k < 24; k++) h.sang.push({ x: h.x, y: h.y - BH * 0.5, vx: (Math.random() - 0.5) * p * 4, vy: -Math.random() * p * 3, v: 30 + Math.random() * 25, c: k % 2 ? '#ffe066' : '#fff', s: Math.max(2, p) });
+                }
+                if (ft >= 6 && h.tomba < 1.5) h.tomba += 0.06;
+                if (agora - h.tFim >= 2400) h.acabou = true;
+            }
             function desenharBriga() {
-                var n = j.nuvem, k, ang, r;
+                var n = j.nuvem, k, ang, r, gr = 1 + ((n.par ? n.par.length : 2) - 2) * 0.45;
                 n.t--;
-                for (k = 0; k < 7; k++) {
-                    ang = Math.random() * 6.28; r = BW * (0.5 + Math.random() * 0.9);
+                for (k = 0; k < 7 + Math.round((gr - 1) * 6); k++) {
+                    ang = Math.random() * 6.28; r = BW * gr * (0.5 + Math.random() * 0.9);
                     g.fillStyle = k % 2 ? '#e8e8e8' : '#9a9a9a';
                     g.beginPath(); g.arc(n.x + Math.cos(ang) * r, n.y + Math.sin(ang) * r * 0.7, p * (1.2 + Math.random() * 1.4), 0, 6.28); g.fill();
                 }
@@ -1341,6 +1489,7 @@
                 if (m === 'chicote') { if (h.tomba < 1.5) h.tomba += 0.07; if (agora - h.tFim >= 2200) h.acabou = true; return; }
                 if (m === 'decap') { if (h.tomba < 1.5) h.tomba += 0.07; if (agora - h.tFim >= 2200) h.acabou = true; return; }
                 if (m === 'ema') { animarEma(h, ft, agora); return; }
+                if (m === 'raio') { animarRaio(h, ft, agora); return; }
                 if (m === 'flecha') { animarFlecha(h); return; }
                 if (m === 'vacina') { animarVacina(h, ft); return; }
                 if (m === 'tiro') { animarTiro(h, ft, agora); return; }
@@ -1540,9 +1689,9 @@
             // ---------- pantera-negra (animal de verdade, o dobro do tamanho dos bonecos): clicou numa briga, ela chega e mata todos os envolvidos com uma chicotada de cauda ----------
             function desenharPantera(pt) {
                 var d = pt.dir, x = pt.x, y = pt.y, k, i, perna = Math.sin(pt.andar * 0.45) * 2.2 * p, u = pt.fase === 'bate' ? Math.min(1, pt.ft / 24) : 0;
-                var on = !!pt.onca, cor = '#c98a3d', cl = '#e8bb7a';   // cachorro caramelo
+                var on = !!pt.onca, cor = '#b9a0e0', cl = '#dccdf3';   // cachorro lilás em pé
                 // cauda (chicote): em repouso fica erguida para trás; na chicotada varre por cima do corpo até a frente
-                var bx = x - d * 13 * p, by = y - 10 * p, px = bx, py = by, ang = 0, L = (on ? 4.2 : 3) * p, fr;
+                var bx = x - d * 5 * p, by = y - 15 * p, px = bx, py = by, ang = 0, L = (on ? 4.4 : 3.2) * p, fr;
                 g.strokeStyle = cor; g.lineCap = 'round'; g.lineWidth = 2.4 * p; g.beginPath(); g.moveTo(bx, by);
                 for (i = 0; i < 9; i++) {
                     fr = pt.fase === 'bate' ? Math.max(0, Math.min(1, u * 1.35 - i * 0.045)) : 0;
@@ -1558,21 +1707,22 @@
                     g.strokeStyle = '#8b9199'; g.lineWidth = Math.max(1, p * 0.3); g.stroke();
                     g.restore();
                 }
-                // pernas
-                g.fillStyle = cor;
-                g.fillRect(x - 11 * p + perna, y - 8 * p, 3.2 * p, 8 * p); g.fillRect(x - 6 * p - perna, y - 8 * p, 3.2 * p, 8 * p);
-                g.fillRect(x + 5 * p + perna, y - 8 * p, 3.2 * p, 8 * p); g.fillRect(x + 10 * p - perna, y - 8 * p, 3.2 * p, 8 * p);
-                // corpo (elipse) e brilho
-                g.save(); g.translate(x, y - 10 * p); g.scale(1, 0.4); g.beginPath(); g.arc(0, 0, 14 * p, 0, 6.2832, false); g.restore(); g.fillStyle = cor; g.fill();
-                g.save(); g.translate(x, y - 11.5 * p); g.scale(1, 0.18); g.beginPath(); g.arc(0, 0, 10 * p, 0, 6.2832, false); g.restore(); g.fillStyle = cl; g.fill();
-                // cabeça virada para a frente
-                var hx = x + d * 14 * p, hy = y - 13 * p;
-                g.fillStyle = cor; g.beginPath(); g.arc(hx, hy, 4.6 * p, 0, 6.2832, false); g.fill();
-                g.fillRect(hx + (d > 0 ? 2 * p : -6 * p), hy, 4 * p, 3 * p);   // focinho
-                g.fillStyle = '#9a5a22'; g.fillRect(hx - d * 3.6 * p - (d > 0 ? 0 : 0.5 * p), hy - 3.6 * p, 2.6 * p, 6 * p); g.fillRect(hx - d * 0.4 * p - 1.2 * p, hy - 4 * p, 2.4 * p, 4.6 * p);   // orelhas caídas
-                g.fillStyle = '#000'; g.beginPath(); g.arc(hx + d * 1.8 * p, hy - 1.2 * p, 0.8 * p, 0, 6.2832, false); g.fill();
-                g.fillStyle = '#111'; g.fillRect(hx + d * 5.4 * p - (d > 0 ? 0 : 1.6 * p), hy - 0.4 * p, 1.6 * p, 1.4 * p);   // nariz
-                g.fillStyle = '#ef6f8a'; g.fillRect(hx + d * 3 * p - (d > 0 ? 0 : 1.4 * p), hy + 2.6 * p + Math.abs(Math.sin(pt.andar * 0.3)) * 0.6 * p, 1.4 * p, 2.4 * p);   // língua
+                // cachorro em pé (lilás): pernas, tronco, braços e cabeça
+                var corE = '#8f6fc0';
+                g.fillStyle = corE;
+                g.fillRect(x - 5 * p + perna, y - 14 * p, 3.6 * p, 14 * p); g.fillRect(x + 1.4 * p - perna, y - 14 * p, 3.6 * p, 14 * p);
+                g.fillRect(x - 5 * p + perna + (d > 0 ? 0 : -2 * p), y - 2 * p, 5.6 * p, 2 * p); g.fillRect(x + 1.4 * p - perna + (d > 0 ? 0 : -2 * p), y - 2 * p, 5.6 * p, 2 * p);
+                g.fillStyle = cor; g.fillRect(x - 6.5 * p, y - 29 * p, 13 * p, 16 * p);
+                g.fillStyle = cl; g.fillRect(x - 3 * p + d * 1.5 * p, y - 27 * p, 6 * p, 12 * p);
+                g.fillStyle = corE; g.fillRect(x - 6.5 * p, y - 13.4 * p, 13 * p, 2.2 * p);   // short
+                g.fillStyle = cor; g.fillRect(x - 9 * p - perna * 0.6, y - 28 * p, 2.8 * p, 12 * p); g.fillRect(x + 6.2 * p + perna * 0.6, y - 28 * p, 2.8 * p, 12 * p);
+                var hx = x + d * 1.5 * p, hy = y - 35 * p;
+                g.fillStyle = cor; g.beginPath(); g.arc(hx, hy, 6.2 * p, 0, 6.2832, false); g.fill();
+                g.fillRect(hx + (d > 0 ? 3 * p : -10 * p), hy - 0.5 * p, 7 * p, 4.6 * p);   // focinho
+                g.fillStyle = corE; g.fillRect(hx - d * 5.8 * p - (d > 0 ? 0 : 2.8 * p), hy - 6 * p, 2.8 * p, 9 * p); g.fillRect(hx - d * 1.2 * p - 1.4 * p, hy - 6.4 * p, 2.8 * p, 7 * p);   // orelhas caídas
+                g.fillStyle = '#000'; g.beginPath(); g.arc(hx + d * 2.4 * p, hy - 1.6 * p, 1 * p, 0, 6.2832, false); g.fill();
+                g.fillStyle = '#111'; g.fillRect(hx + d * 9.6 * p - (d > 0 ? 1.8 * p : 0), hy - 0.8 * p, 1.8 * p, 1.8 * p);   // nariz
+                g.fillStyle = '#ef6f8a'; g.fillRect(hx + d * 5.5 * p - (d > 0 ? 0 : 1.6 * p), hy + 4 * p + Math.abs(Math.sin(pt.andar * 0.3)) * 0.8 * p, 1.6 * p, 2.8 * p);   // língua
                 // estalo no fim da chicotada
                 if (pt.fase === 'bate' && pt.ft >= 18 && pt.ft < 30) {
                     g.strokeStyle = '#fff'; g.lineWidth = Math.max(1.5, p * 0.6);
@@ -1586,8 +1736,8 @@
                     if (o === j.heroi) o.fb = 99999; else if (o === j.vil || o === j.emaR) o.pausa = 99999; else o.briga = 99999;
                 }
                 n.t = 99999;
-                var py0 = H; for (q = 0; q < par.length; q++) { if (j.hs.indexOf(par[q]) >= 0) { py0 = Math.min(H, par[q].y); break; } }   // anda na mesma altura onde os bonecos brigam
-                j.pantera = { x: lado > 0 ? -20 * p : W + 20 * p, y: py0, dir: lado, andar: 0, fase: 'entra', ft: 0, alvoX: Math.max(10 * p, Math.min(W - 10 * p, n.x - lado * 22 * p)), par: par };
+                j.pantera = { x: lado > 0 ? -20 * p : W + 20 * p, y: H, dir: lado, lado: lado, esp: 0, andar: 0, fase: todosNoChao(par) ? 'entra' : 'ronda', ft: 0,   // o animal só anda no piso: se o boneco está no alto, ronda fora da tela até ele descer
+                    alvoX: Math.max(10 * p, Math.min(W - 10 * p, n.x - lado * 20 * p)), par: par };
             }
             function chicotear(o) {
                 var agora = Date.now(), k, cx, cy;
@@ -1603,7 +1753,15 @@
             function passoPantera() {
                 var pt = j.pantera, sd, q;
                 if (!pt) return;
-                if (pt.fase === 'entra') {
+                if (pt.fase === 'ronda') {
+                    if (pt.esp > 0) {
+                        pt.esp--;
+                        if (pt.esp === 0) { if (todosNoChao(pt.par)) { pt.fase = 'entra'; pt.dir = pt.lado; pt.x = pt.lado > 0 ? -20 * p : W + 20 * p; } else pt.dir = -pt.dir; }
+                        return;
+                    }
+                    pt.x += pt.dir * VEL * 2.2; pt.andar++;
+                    if (pt.x < -30 * p || pt.x > W + 30 * p) pt.esp = 40;
+                } else if (pt.fase === 'entra') {
                     pt.x += pt.dir * VEL * 2.4; pt.andar++;
                     if ((pt.dir > 0 && pt.x >= pt.alvoX) || (pt.dir < 0 && pt.x <= pt.alvoX)) { pt.fase = 'bate'; pt.ft = 0; }
                 } else if (pt.fase === 'bate') {
@@ -1622,7 +1780,7 @@
                 var n = j.nuvem, lado = n.x < W / 2 ? 1 : -1, q, o, par = n.par.slice(), py0 = H;
                 for (q = 0; q < par.length; q++) { o = par[q]; o.condenado = true; o.briga = 99999; py0 = Math.min(py0, o.y); }
                 n.t = 99999; n.onca = true;
-                j.onca = { onca: true, x: lado > 0 ? -26 * p : W + 26 * p, y: py0, dir: lado, andar: 0, fase: 'entra', ft: 0, lado: lado, nx: n.x,
+                j.onca = { onca: true, x: lado > 0 ? -26 * p : W + 26 * p, y: H, dir: lado, andar: 0, fase: 'entra', ft: 0, lado: lado, nx: n.x,
                            alvoX: Math.max(10 * p, Math.min(W - 10 * p, n.x - lado * 18 * p)), par: par };
             }
             function decapitar(o) {
@@ -1696,11 +1854,26 @@
                 if (!em) {
                     d = h.x > W / 2 ? 1 : -1;
                     var x0 = d > 0 ? -34 * p : W + 34 * p;
-                    if (j.emaR) { x0 = j.emaR.x; d = h.x >= x0 ? 1 : -1; j.emaR = null; }   // é a própria ema que estava fugindo dele
-                    h.ema = em = { dir: d, x: x0, alvo: Math.max(16 * p, Math.min(W - 16 * p, h.x - d * 22 * p)), fase: 'entra', f: 0, andar: 0, hx: 0, hy: 0, bico: 0, andando: true };
+                    var dir0 = 0; if (j.emaR) { x0 = j.emaR.x; d = h.x >= x0 ? 1 : -1; dir0 = j.emaR.dir; j.emaR = null; }   // é a própria ema que estava fugindo dele
+                    h.ema = em = { dir: d, x: x0, alvo: Math.max(16 * p, Math.min(W - 16 * p, h.x - d * 22 * p)), fase: 'entra', f: 0, andar: 0, hx: 0, hy: 0, bico: 0, andando: true, dir0: dir0 };
                     h.vx = 0;
                 }
                 d = em.dir; em.f++; rx = em.x + d * 17 * p; ry = y - 50 * p;
+                if (!em.rondou && em.fase === 'entra' && em.f === 1 && h.y < H - 3) { em.fase = 'ronda'; em.rondou = true; em.esp = 0; em.andando = true; em.dir = em.dir0 || em.dir; d = em.dir; }
+                if (em.fase === 'ronda') { // o boneco está no alto (em cima de um bloco): a ema ronda fora da tela até ele descer ao piso
+                    if (em.esp > 0) {
+                        em.esp--;
+                        if (em.esp === 0) {
+                            if (h.y >= H - 3) { d = h.x > W / 2 ? 1 : -1; em.dir = d; em.x = d > 0 ? -34 * p : W + 34 * p; em.alvo = Math.max(16 * p, Math.min(W - 16 * p, h.x - d * 22 * p)); em.fase = 'entra'; em.f = 0; }
+                            else em.dir = -em.dir;
+                        }
+                        return;
+                    }
+                    em.x += em.dir * VEL * 2.4; em.andar++; em.hx = em.x + em.dir * 17 * p; em.hy = ry + Math.cos(em.andar * 0.8) * p; em.bico = 0;
+                    if (em.x < -40 * p || em.x > W + 40 * p) em.esp = 40;
+                    desenharEma(em, y, null, false, null);
+                    return;
+                }
                 if (em.fase === 'entra') {
                     em.x += d * VEL * 2.7; em.andar++; em.hx = em.x + d * 17 * p + Math.sin(em.andar * 0.4) * p; em.hy = ry + Math.cos(em.andar * 0.8) * p;
                     if ((d > 0 && em.x >= em.alvo) || (d < 0 && em.x <= em.alvo)) { em.x = em.alvo; em.fase = 'olha'; em.f = 0; em.andando = false; }
@@ -1757,7 +1930,7 @@
                 else {
                     for (q = 0; q < j.hs.length; q++) { // cruzou com alguém: confusão
                         o = j.hs[q];
-                        if (o.tipo !== 4 && o.estado === 'vivo' && o.fase === 0 && !(o.cd > 0) && !(em.cdb > 0) && Math.abs(o.x - em.x) < BW * 1.4 && o.y > H - BH * 1.5) {
+                        if (!(j.nuvem && j.nuvem.t > 0) && o.tipo !== 4 && o.estado === 'vivo' && o.fase === 0 && !(o.cd > 0) && !(em.cdb > 0) && Math.abs(o.x - em.x) < BW * 1.4 && o.y > H - BH * 1.5) {
                             o.briga = 90; o.cd = 300; em.pausa = 90; em.cdb = 300; o.vx = (o.x >= em.x ? 1 : -1) * VEL * 1.6; em.dir = o.x >= em.x ? -1 : 1;
                             j.nuvem = { x: (o.x + em.x) / 2, y: H - BH * 0.8, t: 90, par: [o, em] }; break;
                         }
@@ -1782,7 +1955,7 @@
                         if (h.fb === 0) { h.vx = -h.lutaDir * VEL * 1.6; h.dir = h.vx >= 0 ? 1 : -1; }
                     } else if (h.estado === 'voa') {
                         var oq, ob;
-                        if (!(h.cd > 0)) for (oq = 0; oq < j.hs.length; oq++) {
+                        if (!(h.cd > 0) && !(j.nuvem && j.nuvem.t > 0)) for (oq = 0; oq < j.hs.length; oq++) {
                             ob = j.hs[oq];
                             if (ob.estado === 'vivo' && ob.fase === 0 && !(ob.cd > 0) && Math.abs(ob.x - h.x) < BW * 1.5) {
                                 h.fb = 90; h.cd = ob.cd = 300; ob.briga = 90; h.lutaDir = ob.x >= h.x ? 1 : -1; h.lutaY = ob.y - BH * 1.3;
@@ -1817,7 +1990,7 @@
                         var oc;
                         for (oc = 0; oc < j.hs.length; oc++) { // cruzou com um personagem pelo caminho: briga
                             var ov2 = j.hs[oc];
-                            if (ov2.estado === 'vivo' && ov2.fase === 0 && !(ov2.cd > 0) && !(v.cdb > 0) && Math.abs(ov2.x - v.x) < BW * 1.3 && ov2.y > H - BH * 1.5) {
+                            if (!(j.nuvem && j.nuvem.t > 0) && ov2.estado === 'vivo' && ov2.fase === 0 && !(ov2.cd > 0) && !(v.cdb > 0) && Math.abs(ov2.x - v.x) < BW * 1.3 && ov2.y > H - BH * 1.5) {
                                 ov2.briga = 90; ov2.cd = 300; v.pausa = 90; v.cdb = 300; ov2.vx = (ov2.x >= v.x ? 1 : -1) * VEL * 1.6;
                                 j.nuvem = { x: (ov2.x + v.x) / 2, y: H - BH * 0.5, t: 90, par: [ov2, v] }; break;
                             }
@@ -1854,6 +2027,7 @@
                 if (segs.length) g.drawImage(lay, 0, j.desY || 0);
                 quadro++;
                 if (quadro % 20 === 0) { lerObstaculos(); lerIndio(); }
+                passoBlocos();
                 var puxaI = 0, dirI = indioPos.x < W / 2 ? 1 : -1, pi2;
                 for (pi2 = 0; pi2 < j.hs.length; pi2++) {
                     var hq = j.hs[pi2];
@@ -1861,18 +2035,20 @@
                 }
                 desenharIndio(puxaI, dirI);
                 var dec = Date.now() - j.t0, quando = [0, 1000, 3000, 5000], ordem = [4, 0, 1, 2];   // o senhor grisalho já começa o jogo correndo atrás da ema; depois 1 s, 3 s e 5 s
-                while (j.hs.length < 4 && dec >= quando[j.hs.length]) { var nn = novo(ordem[j.hs.length]); j.hs.push(nn); if (nn.tipo === 4) criarEmaR(); }
+                while (j.hs.length < 4 && dec >= quando[j.hs.length]) { var nn = novo(ordem[j.hs.length]); nasceNaComanda(nn); j.hs.push(nn); if (nn.tipo === 4) criarEmaR(); }
                 for (a2 = 0; a2 < j.hs.length; a2++) for (b2 = a2 + 1; b2 < j.hs.length; b2++) {
                     if (j.hs[a2].estado === 'vivo' && j.hs[b2].estado === 'vivo' && j.hs[a2].fase === 0 && j.hs[b2].fase === 0) checarBriga(j.hs[a2], j.hs[b2]);
                 }
+                juntarBriga();
                 if (j.nuvem && j.nuvem.t > 0) { desenharBriga(); }
+                passoFumaca();
                 if (j.carr && j.carr.saindo) { // o carrasco só some da página depois de sair andando
                     var cc = j.carr, sdc = cc.x < W / 2 ? -1 : 1; cc.x += sdc * VEL * 1.5; cc.dir = sdc; cc.andar++; cc.solo = true; humano(cc);
                     if (cc.x < -BW * 2 || cc.x > W + BW * 2) j.carr = null;
                 }
                 for (hi = 0; hi < j.hs.length; hi++) {
                     h = j.hs[hi];
-                    if (h.estado === 'vivo') { if (h.briga > 0) h.briga--; else { if (h.tipo === 4 && j.emaR) { var dxe = j.emaR.x - h.x; h.vx = Math.abs(dxe) < BW * 1.4 ? 0 : (dxe > 0 ? 1 : -1) * VEL * 1.05; if (h.vx !== 0) h.dir = h.vx > 0 ? 1 : -1; } mover(h); } }
+                    if (h.estado === 'vivo') { if (h.briga > 0) { h.briga--; cairParado(h); } else { if (h.tipo === 4 && j.emaR) { var dxe = j.emaR.x - h.x; h.vx = Math.abs(dxe) < BW * 1.4 ? 0 : (dxe > 0 ? 1 : -1) * VEL * 1.05; if (h.vx !== 0) h.dir = h.vx > 0 ? 1 : -1; } mover(h); if (h.rasteja && h.solo && h.y < H - BH * 3.5) { h.presoT = (h.presoT || 0) + 1; if (h.presoT > 300) { nasceNaComanda(h); h.presoT = 0; } } else h.presoT = 0; } }
                     else if (h.estado === 'abduzido') { /* flutuando */ }
                     else if (h.estado === 'parado') { var ya = h.y; h.vy += GRAV; h.y += h.vy; var op = bate(h.x, h.y); if (h.y >= H || op) { h.y = op ? op.t : H; h.vy = 0; } else pousarNoDesenho(h, ya); }
                     else {
@@ -1883,14 +2059,14 @@
                     humano(h);
                     if (h.fase >= 1 && !h.acabou) { if (h.morte === 'ferramentas' || h.morte === 'foice' || h.morte === 'martelo') animarFerramentas(h); else animarMorte(h); }
                     if (h.acabou) { // ressurge 1 s depois, para poder ser morto de novo
-                        if (!h.renasce) { h.renasce = Date.now(); if ((h.morte === 'ferramentas' || h.morte === 'foice' || h.morte === 'martelo') && ic) ic.style.visibility = 'visible'; }
+                        if (!h.renasce) { h.renasce = Date.now(); criarBloco(h.x); if ((h.morte === 'ferramentas' || h.morte === 'foice' || h.morte === 'martelo') && ic) ic.style.visibility = 'visible'; }
                         else if (Date.now() - h.renasce >= 1000) { var nv = novo(h.tipo); nv.mortes = h.mortes + 1; nv.estagio = h.estagio; nv.jc = h.jc; nv.forma = h.forma;
                             if (h.tipo === 0) { // 1º: humano → (vacina) jacaré → boi → abduzido → volta a humano
                                 if (h.estagio === 0) { nv.estagio = 1; nv.forma = 'humano'; }
                                 else if (h.estagio === 2) { nv.jc = h.jc + 1; if (nv.jc >= 3) { nv.estagio = 3; nv.forma = 'boi'; } }
                                 else if (h.estagio === 3) { nv.estagio = 0; nv.jc = 0; nv.forma = 'humano'; }
                             }
-                            aplicarForma(nv); j.hs[hi] = nv; if (nv.tipo === 4) criarEmaR(); continue; }
+                            aplicarForma(nv); nasceNaComanda(nv); j.hs[hi] = nv; if (nv.tipo === 4) criarEmaR(); continue; }
                     }
                     if (h.cab) {
                         g.save(); g.translate(h.cab.x, h.cab.y); g.rotate(h.cab.rot); g.translate(-h.cab.x, -h.cab.y);
@@ -1935,10 +2111,13 @@
             function descer(px, py) {
                 if (px > 170 && px < 330 && py > H - 26) { limparTudo(); return; } // [ limpar desenho ]
                 var nu = j.nuvem;
-                if (nu && nu.t > 0 && nu.par && !nu.onca && !j.pantera && (px - nu.x) * (px - nu.x) + (py - nu.y) * (py - nu.y) < (BW * 3) * (BW * 3)) { chamarPantera(); j.toques = []; return; }
+                if (nu && nu.t > 0 && nu.par && !nu.onca && !nu.raio && !j.pantera && (px - nu.x) * (px - nu.x) + (py - nu.y) * (py - nu.y) < (BW * 3) * (BW * 3)) { chamarPantera(); j.toques = []; return; }
                 var he = j.heroi;
                 if (he && he.estado === 'voa' && !he.condenado && Math.abs(px - he.x) < BW * 1.7 && Math.abs(py - he.y) < BH * 1.2) { matarHeroi(); j.toques = []; return; }
-                var hit = acertou(px, py);
+                var hit = acertou(px, py), kb, bq;
+                if (!hit) { // pegou um bloco? arrasta
+                    for (kb = blocos.length - 1; kb >= 0; kb--) { bq = blocos[kb]; if (px >= bq.l && px <= bq.l + BLK && py >= bq.t && py <= bq.t + BLK) { bq.arrasta = true; bq.cai = false; bq.vy = 0; arr = { b: bq, dx: px - bq.l, dy: py - bq.t }; return; } }
+                }
                 if (hit) {
                     var h = hit;
                     h.estado = 'parado'; h.vx = 0; h.fase = 1; h.ft = 0; j.toques = [];
@@ -1949,6 +2128,7 @@
                 cur = { x0: px, y0: py, ult: { x: px, y: py }, len: 0, n: 0, t0: Date.now() };
             }
             function mover2(px, py) {
+                if (arr) { arr.b.l = Math.max(0, Math.min(W - BLK, px - arr.dx)); arr.b.t = Math.max(0, Math.min(H - BLK, py - arr.dy)); return; }
                 if (!cur) return;
                 var dx = px - cur.ult.x, dy = py - cur.ult.y, d = Math.sqrt(dx * dx + dy * dy);
                 if (d < 6) return;
@@ -1958,6 +2138,7 @@
                 cur.len += d; cur.n++; cur.ult = { x: px, y: py };
             }
             function subir(px, py) {
+                if (arr) { arr.b.arrasta = false; arr.b.cai = false; arr.b.vy = 0; empilhar(arr.b); afastarDoBloco(arr.b); arr = null; return; }   // solto, o bloco fica onde foi deixado
                 if (!cur) return;
                 var c = cur; cur = null;
                 if (c.len < 14) { // foi só um toque: apaga o risquinho e conta como toque de saída
