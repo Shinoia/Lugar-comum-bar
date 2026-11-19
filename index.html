@@ -2059,7 +2059,7 @@
                     humano(h);
                     if (h.fase >= 1 && !h.acabou) { if (h.morte === 'ferramentas' || h.morte === 'foice' || h.morte === 'martelo') animarFerramentas(h); else animarMorte(h); }
                     if (h.acabou) { // ressurge 1 s depois, para poder ser morto de novo
-                        if (!h.renasce) { h.renasce = Date.now(); criarBloco(h.x); if ((h.morte === 'ferramentas' || h.morte === 'foice' || h.morte === 'martelo') && ic) ic.style.visibility = 'visible'; }
+                        if (!h.renasce) { h.renasce = Date.now(); j.mortesBloco = (j.mortesBloco || 0) + 1; if (j.mortesBloco % 3 === 0) criarBloco(h.x); if ((h.morte === 'ferramentas' || h.morte === 'foice' || h.morte === 'martelo') && ic) ic.style.visibility = 'visible'; }
                         else if (Date.now() - h.renasce >= 1000) { var nv = novo(h.tipo); nv.mortes = h.mortes + 1; nv.estagio = h.estagio; nv.jc = h.jc; nv.forma = h.forma;
                             if (h.tipo === 0) { // 1º: humano → (vacina) jacaré → boi → abduzido → volta a humano
                                 if (h.estagio === 0) { nv.estagio = 1; nv.forma = 'humano'; }
