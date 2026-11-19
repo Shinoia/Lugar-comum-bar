@@ -555,16 +555,19 @@
             return !!(ae && (ae.id === 'select-produto' || ae.id === 'busca-produto' || ae.id === 'input-qtd' || ae.id === 'input-obs' || ae.id === 'input-tel-pessoa' || ae.id === 'tel-ni' || ae.id === 'input-nome-mesa' || String(ae.className || '').indexOf('rap-campo') >= 0));
         }
         function renderizarSeLivre() {
-            if (formEmUso()) { estado.renderAdiado = Date.now(); return; }
+            if (formEmUso()) { estado.renderAdiado = Date.now(); estado.renderPend = true; return; }
+            estado.renderPend = false;
             renderizar();
         }
         function sincronizar() {
             if (ESTACAO) return;
             capturarValoresFormulario();
             var meuSeq = (estado.seqReq = (estado.seqReq || 0) + 1);
+            estado.sincT = Date.now();
             fetch(API_URL)
                 .then(function(res) { return res.json(); })
                 .then(function(data) {
+                    estado.sincT = 0;
                     // resposta mais antiga que outra já aplicada (chegou fora de ordem): descarta, senão o status "volta"
                     if (meuSeq < (estado.seqAplicada || 0)) return;
                     estado.seqAplicada = meuSeq;
@@ -610,12 +613,19 @@
                                     if (!ov.ok && !ov.enviando && Date.now() - ov.ult > 6000) enviarStatus(chv);
                                 }
                             }
+                            // nada mudou desde a última consulta? não refaz a tela (poupa o iPad e evita piscar)
+                            var sigNova = JSON.stringify([data.pedidos, CARDAPIO, data.frequentes, data.clientes, data.telefones, data.usuario, estado.versao,
+                                (estado.finPend || []).length, (estado.cancelPend || []).length, Object.keys(estado.fechando || {}).length, Object.keys(estado.vrOcultas || {}).length,
+                                estado.pessoasNovas.length, estado.mesasNovas.length, estado.abaAtiva, estado.mesaSelecionadaId]);
+                            if (sigNova === estado.sigUlt && !estado.renderPend) return;
+                            estado.sigUlt = sigNova;
                             processarPedidos();
                         }
                         renderizarSeLivre();
                     }
                 })
                 .catch(function(e) { 
+                    estado.sincT = 0;
                     console.log("Aviso de rede (usando dados locais):", e); marcarConexao(false);
                     renderizarSeLivre(); 
                 });
@@ -828,7 +838,7 @@
 
         // ---------- GAME (segredo): em "+ Nova comanda" digite 1337 no número e GAME no nome ----------
         // ---------- atualização automática do aplicativo (iPad): compara a versão do site no servidor e recarrega sozinho ----------
-        var VERSAO_SITE = '19/11-B';
+        var VERSAO_SITE = '19/11-D';
         (function() {
             var rotulo = document.createElement('div');
             rotulo.textContent = 'v' + VERSAO_SITE;
@@ -2686,7 +2696,8 @@
                 .then(function(res) { return res.json(); })
                 .then(function(r) {
                     if (r && r.result === 'success') {
-                        setTimeout(sincronizar, 500);
+                        if (r.linha) novo.linha = r.linha;   // já dá para cancelar / mudar status sem esperar a próxima sincronização
+                        setTimeout(sincronizar, 300);
                     } else if (r && r.error) {
                         desfazerPedido(novo, r.error);
                     } else {
@@ -3580,7 +3591,7 @@
             renderizar();
             if (!CHAVE) pedirChave('');
             sincronizar();
-            setInterval(sincronizar, 5000);
+            setInterval(function() { if (estado.sincT && Date.now() - estado.sincT < 8000) return; sincronizar(); }, 3000);   // não empilha consultas quando o servidor está lento
         }
     </script>
 </body>
