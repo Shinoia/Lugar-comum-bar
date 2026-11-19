@@ -497,6 +497,15 @@
                 });
                 estado.pessoas.sort(function(a, b) { return a.nome.localeCompare(b.nome, 'pt'); });
                 finLista.sort(function(a, b) { return ordemData(b.tchau).localeCompare(ordemData(a.tchau)); });
+                // comandas que acabei de fechar aparecem na hora em Finalizadas, até a planilha confirmar (aí vale a versão dela)
+                if (estado.finPend && estado.finPend.length) {
+                    estado.finPend = estado.finPend.filter(function(fp) {
+                        if (Date.now() - fp.t > 120000) return false;
+                        var nSrv = finLista.filter(function(e) { return e.mesa === fp.mesa; }).length;
+                        return nSrv <= fp.antes;
+                    });
+                    estado.finPend.forEach(function(fp) { finLista.unshift(fp); });
+                }
                 estado.finalizadas = finLista;
 
                 for (var mId in contagemFechamentos) {
@@ -819,7 +828,7 @@
 
         // ---------- GAME (segredo): em "+ Nova comanda" digite 1337 no número e GAME no nome ----------
         // ---------- atualização automática do aplicativo (iPad): compara a versão do site no servidor e recarrega sozinho ----------
-        var VERSAO_SITE = '19/11-A';
+        var VERSAO_SITE = '19/11-B';
         (function() {
             var rotulo = document.createElement('div');
             rotulo.textContent = 'v' + VERSAO_SITE;
@@ -2942,7 +2951,16 @@
             estado.pedidosGlobais.forEach(function(p) {
                 if (p.status !== 'fechado' && String(p.mesa) === String(idAlvo)) { sigs[sigItem(p)] = true; qtdSigs++; }
             });
-            var regFech = null;
+            var regFech = null, fpNovo = null;
+            if (mesaObj.itens.length > 0 && !descartar) { // já mostra em Finalizadas (esperando a confirmação da planilha)
+                var agoraD = new Date(), pz = function(n) { return (n < 10 ? '0' : '') + n; };
+                var tchauLocal = pz(agoraD.getDate()) + '/' + pz(agoraD.getMonth() + 1) + '/' + agoraD.getFullYear() + ' ' + pz(agoraD.getHours()) + ':' + pz(agoraD.getMinutes()) + ':' + pz(agoraD.getSeconds());
+                var totalFp = 0, itensFp = mesaObj.itens.map(function(it) { totalFp += Number(it.qnt) * Number(it.preco); return { produto: it.produto, qnt: Number(it.qnt), preco: it.preco, obs: it.obs || '', pedidoEm: '' }; });
+                fpNovo = { k: 'pend|' + idAlvo + '|' + Date.now(), mesa: String(idAlvo), tchau: tchauLocal, abertura: mesaObj.abertaEm || '', itens: itensFp, total: totalFp, forma: forma, teste: !!teste, pend: true, t: Date.now(),
+                           antes: (estado.finalizadas || []).filter(function(e) { return e.mesa === String(idAlvo) && !e.pend; }).length };
+                if (!estado.finPend) estado.finPend = [];
+                estado.finPend.push(fpNovo);
+            }
             if (qtdSigs > 0) {
                 regFech = { sigs: sigs, t: Date.now() };
                 if (!estado.fechando) estado.fechando = {};
@@ -2953,6 +2971,7 @@
             processarPedidos();
             renderizar();
             var desfazerFechar = function() {
+                if (fpNovo && estado.finPend) estado.finPend = estado.finPend.filter(function(e) { return e !== fpNovo; });
                 if (regFech && estado.fechando) Object.keys(estado.fechando).forEach(function(k) { if (estado.fechando[k] === regFech) delete estado.fechando[k]; });
                 alert('Não foi possível fechar a comanda (sem conexão com a planilha). Confira e tente de novo.');
                 sincronizar();
@@ -3424,8 +3443,8 @@
                             '<small>Aberta: ' + esc(f.abertura) + '<br>Fechada: ' + esc(f.tchau) + (f.forma ? '<br>💳 Pagamento: <b>' + esc(f.forma) + '</b>' : '') + '</small>' +
                             '<div style="display:flex; flex-direction:column; gap:0.25rem;">' + linhasF + '</div>' +
                             '<div style="display:flex; gap:0.5rem;"><button data-k="' + esc(f.k) + '" onclick="imprimirFinalizada(this.getAttribute(\'data-k\'))" style="background:#fff; border:2px solid #000; flex:1;">🖨️ Imprimir</button>' +
-                            '<button data-k="' + esc(f.k) + '" onclick="pdfFinalizada(this.getAttribute(\'data-k\'))" style="background:#fff; border:2px solid #000; flex:1;">📄 PDF (Drive)</button>' +
-                            (souTeste() && !ehVip(f.mesa) ? '<button data-k="' + esc(f.k) + '" onclick="apagarFinalizada(this.getAttribute(\'data-k\'))" style="background:#7f1d1d; color:#fff; border:2px solid #000;">🗑️ Apagar</button>' : '') + '</div>' +
+                            (f.pend ? '<span style="flex:1; font-size:0.8rem; align-self:center;">⏳ gravando na planilha…</span>' : '<button data-k="' + esc(f.k) + '" onclick="pdfFinalizada(this.getAttribute(\'data-k\'))" style="background:#fff; border:2px solid #000; flex:1;">📄 PDF (Drive)</button>') +
+                            (souTeste() && !ehVip(f.mesa) && !f.pend ? '<button data-k="' + esc(f.k) + '" onclick="apagarFinalizada(this.getAttribute(\'data-k\'))" style="background:#7f1d1d; color:#fff; border:2px solid #000;">🗑️ Apagar</button>' : '') + '</div>' +
                         '</div>';
                     });
                     var papel = lerConfig('papel', '80');
