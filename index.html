@@ -1006,7 +1006,7 @@
 
         // ---------- GAME (segredo): em "+ Nova comanda" digite 1337 no número e GAME no nome ----------
         // ---------- atualização automática do aplicativo (iPad): compara a versão do site no servidor e recarrega sozinho ----------
-        var VERSAO_SITE = '20/11-H';
+        var VERSAO_SITE = '20/11-I';
         function atualizarRotuloVersao() {
             var r = document.getElementById('rotulo-versao');
             if (r) r.textContent = 'site v' + VERSAO_SITE + (estado.usuario ? ' · script ' + (estado.versao || '?') : '');
@@ -3022,11 +3022,18 @@
                     '<label style="display:block; margin-top:0.4rem;"><input type="checkbox" id="fech-descartar" checked style="width:auto; display:inline-block; margin-right:0.4rem;"> <b>Só fechar (some na hora, sem registro e sem precisar de Finalizar dia)</b></label></div>';
             }
             if (m.itens.length > 0) {
-                botoes += '<div style="font-size:0.85rem; margin:0.75rem 0 0.25rem;"><b>Forma de pagamento:</b> <span style="color:#b91c1c;">' + (f.forma ? '' : (teste ? '(opcional)' : '(escolha uma)')) + '</span></div><div style="display:grid; grid-template-columns:1fr 1fr; gap:0.5rem;">' +
+                botoes += '<div style="font-size:0.85rem; margin:0.75rem 0 0.25rem;"><b>Forma de pagamento:</b> <span style="color:#b91c1c;">' + ((f.forma || (f.livre && String(f.livre).trim())) ? '' : (teste ? '(opcional)' : '(escolha uma)')) + '</span></div><div style="display:grid; grid-template-columns:1fr 1fr; gap:0.5rem;">' +
                     FORMAS_PAGAMENTO.concat(teste ? ['Teste'] : []).map(function(fp) {
                         var sel = f.forma === fp;
                         return '<button type="button" data-forma="' + esc(fp) + '" onclick="escolherForma(this.getAttribute(\'data-forma\'))" style="border:2px solid #000; padding:0.6rem; font-weight:bold; background:' + (sel ? '#4ade80' : '#fff') + ';">' + (sel ? '✔ ' : '') + esc(fp) + '</button>';
                     }).join('') + '</div>';
+            }
+            // só ADMIN (e supreme): campo livre para registrar outra forma ou decisão (ex.: "saiu sem pagar"); preenchido, libera o fechamento sem escolher débito/crédito/PIX/dinheiro
+            if (m.itens.length > 0 && !teste && estado.usuario && estado.usuario.admin) {
+                botoes += '<div style="margin-top:0.75rem; background:#fef9c3; border:2px solid #ca8a04; border-radius:0.5rem; padding:0.5rem;">' +
+                    '<label for="fech-livre" style="font-size:0.8rem; font-weight:bold; display:block; margin-bottom:0.25rem;">Outra forma ou decisão (só admin)</label>' +
+                    '<input type="text" id="fech-livre" maxlength="60" autocomplete="off" placeholder="Ex.: saiu sem pagar, fiado - João, cortesia" value="' + esc(f.livre || '') + '" oninput="fechamentoLivre(this.value)" style="width:100%; box-sizing:border-box;">' +
+                    '<div style="font-size:0.7rem; margin-top:0.25rem;">Se escrever aqui, vale o que estiver escrito e dá para confirmar sem escolher uma forma acima.</div></div>';
             }
             el.innerHTML = '<div style="background:#fff; border:3px solid #000; border-radius:0.75rem; padding:1rem; width:100%; max-width:26rem; color:#000; max-height:90vh; overflow:auto;">' +
                 '<h3 style="margin-bottom:0.5rem;">Fechar ' + esc(nomeMesa(m)) + '</h3>' + (m.vip ? '<div style="font-size:0.75rem; margin-bottom:0.5rem;">⭐ Conta VIP (mensal): vai para a aba VIP e não entra no caixa do dia.</div>' : '') +
@@ -3038,6 +3045,12 @@
                     '<button type="button" onclick="fecharJanelaFechamento()" style="background:#fff; border:2px solid #000;">Cancelar</button>' +
                     '<button type="button" onclick="confirmarFechamento()" style="background:#f87171; border:2px solid #000; flex:1;">' + 'Confirmar fechamento' + '</button>' +
                 '</div></div>';
+        }
+        function fechamentoLivre(v) {
+            if (!estado.fechamento) return;
+            estado.fechamento.livre = v;
+            var sp = document.querySelector('#janela-fechamento span[style*="b91c1c"]');
+            if (sp && /escolha uma|^$/.test(sp.textContent)) sp.textContent = String(v).trim() ? '' : '(escolha uma)';
         }
         function escolherForma(fp) { if (estado.fechamento) { estado.fechamento.forma = fp; desenharFechamento(); } }
         // ---- só Queen: apagar comandas (cuidado: não dá para desfazer) ----
@@ -3122,8 +3135,9 @@
             var teste = (souTeste() || ehMesaTesteFixa(mesaObj.id) || ehMesaTesteFixa(mesaObj.idExibicao)) && mesaTeste(mesaObj), descartar = false;
             if (teste) { var cd = document.getElementById('fech-descartar'); descartar = !cd || cd.checked; }   // supreme: só fecha a comanda de teste, sem Finalizar dia
             var precisaForma = mesaObj.itens.length > 0 && !teste;
-            if (precisaForma && !f.forma) { alert('Selecione a forma de pagamento: Débito, Crédito, PIX ou Dinheiro.'); return; }
-            var forma = precisaForma ? f.forma : '';
+            var livre = (estado.usuario && estado.usuario.admin && !teste) ? String(f.livre || '').replace(/\s+/g, ' ').trim().substring(0, 60) : '';
+            if (precisaForma && !f.forma && !livre) { alert('Selecione a forma de pagamento: Débito, Crédito, PIX ou Dinheiro.'); return; }
+            var forma = precisaForma ? (livre || f.forma) : '';
             if (teste) forma = 'Teste'; // comanda de teste: sempre registrada como TESTE
             fecharJanelaFechamento();
             estado.fechamento = null;
@@ -3169,7 +3183,7 @@
             };
             var aposFechar = function() { sincronizar(); };
             // GET primeiro (o servidor novo também gera o PDF no Drive); se o script for antigo, usa o POST de antes
-            fetch(API_URL + '?acao=fechar_mesa&mesa=' + encodeURIComponent(idAlvo) + '&forma=' + encodeURIComponent(forma) + (descartar ? '&descartar=1' : ''))
+            fetch(API_URL + '?acao=fechar_mesa&mesa=' + encodeURIComponent(idAlvo) + '&forma=' + encodeURIComponent(livre ? '' : forma) + (livre ? '&forma_livre=' + encodeURIComponent(livre) : '') + (descartar ? '&descartar=1' : ''))
                 .then(function(res) { return res.json(); })
                 .then(function(r) {
                     if (r && r.result === 'success') { aposFechar(); return; }
