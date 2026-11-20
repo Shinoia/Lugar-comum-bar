@@ -54,6 +54,9 @@
         .kds-card.preparando { background: #f97316; }
         .kds-card.pronto { background: #4ade80; }
         .kds-card.entregue { background: #facc15; }
+        /* pisca até ser atendido (cozinha/bar: pedido novo) ou entregue (caixa/abertas: item pronto esperando) */
+        @keyframes piscar { 0%, 100% { box-shadow: 0 0 0 0 rgba(255,255,255,0); opacity: 1; } 50% { box-shadow: 0 0 0 5px #fff, 0 0 16px 6px #facc15; opacity: 0.72; } }
+        .piscando { animation: piscar 1s ease-in-out infinite; -webkit-animation: piscar 1s ease-in-out infinite; }
 
         .badge { padding: 0.125rem 0.5rem; border-radius: 0.25rem; font-size: 0.75rem; font-weight: bold; background: #fff; color: #000; }
         .btn-acao-entregue { background: #fff; border: 2px solid #000; border-radius: 0.4rem; padding: 0.3rem 0.5rem; font-size: 0.75rem; font-weight: bold; color: #000; text-align: center; }
@@ -96,6 +99,7 @@
             <button id="btn-aba-logs" class="btn-tab" style="display:none;" onclick="mudarAba('logs')">🛡️ Logs</button>
             <button class="btn-dia" id="btn-dia" onclick="finalizarDia()">🏁 Finalizar Dia</button>
             <span id="info-usuario" class="sync-status" style="background:#fff;"></span>
+            <button class="btn-tab" id="btn-som" onclick="alternarSom()" title="Ligar/desligar os avisos sonoros">🔔 Som</button>
             <button class="btn-tab" onclick="sair()" title="Sair deste aparelho">Sair</button>
         </div>
     </header>
@@ -214,6 +218,7 @@
             if (bd) bd.style.display = (estado.usuario && !estado.usuario.admin) ? 'none' : ''; // user não vê Finalizar Dia
             el.textContent = estado.usuario ? ('👤 ' + estado.usuario.nome + (estado.usuario.supreme ? ' (supreme)' : estado.usuario.admin ? ' (admin)' : ' (user)')) : '';
             atualizarRotuloVersao();
+            rotuloSom();
         }
         function exigirAdmin() {
             if (estado.usuario && !estado.usuario.admin) { alert('Somente administradores podem fazer isso.'); return false; }
@@ -643,6 +648,7 @@
                                     if (!ov.ok && !ov.enviando && Date.now() - ov.ult > 6000) enviarStatus(chv);
                                 }
                             }
+                            detectarSons(data.pedidos);
                             // nada mudou desde a última consulta? não refaz a tela (poupa o iPad e evita piscar)
                             var sigNova = JSON.stringify([data.pedidos, CARDAPIO, data.frequentes, data.clientes, data.telefones, data.usuario, estado.versao,
                                 (estado.finPend || []).length, (estado.cancelPend || []).length, Object.keys(estado.fechando || {}).length, Object.keys(estado.vrOcultas || {}).length,
@@ -744,6 +750,76 @@
                 '<p style="color:#000; font-size:0.75rem; margin-top:0.5rem;">O Google não informa quem apenas ABRE uma planilha. Aqui aparecem os logins no site (inclusive erros), as ações feitas pelo site e as edições feitas direto nas planilhas. Esses registros ficam guardados no sistema, não na planilha.</p></div>';
         }
         setInterval(function() { if (estado.abaAtiva === 'logs' && !document.hidden) carregarLogs(true); }, 20000);
+
+
+        // ---------- avisos sonoros: pedido novo na Cozinha / Bar / Caixa e item que ficou "pronto" ----------
+        estado.som = { ligado: true, ctx: null, base: null };
+        try { estado.som.ligado = localStorage.getItem('lcb_som') !== '0'; } catch (eSom) {}
+        function somCtx() {
+            var AC = window.AudioContext || window.webkitAudioContext;
+            if (!AC) return null;
+            if (!estado.som.ctx) { try { estado.som.ctx = new AC(); } catch (e) { return null; } }
+            return estado.som.ctx;
+        }
+        // navegadores (principalmente o iPad) só liberam o som depois de um toque na tela
+        function somDestravar() { var c = somCtx(); if (c && c.state === 'suspended') { try { c.resume(); } catch (e) {} } }
+        document.addEventListener('touchstart', somDestravar, { passive: true });
+        document.addEventListener('mousedown', somDestravar);
+        function rotuloSom() { var b = document.getElementById('btn-som'); if (b) b.textContent = estado.som.ligado ? '🔔 Som' : '🔕 Mudo'; }
+        function alternarSom() {
+            estado.som.ligado = !estado.som.ligado;
+            try { localStorage.setItem('lcb_som', estado.som.ligado ? '1' : '0'); } catch (e) {}
+            rotuloSom();
+            if (estado.som.ligado) tocarSom('pronto');
+        }
+        // cada tipo tem um som diferente, para saber de longe o que chegou
+        var SONS = {
+            cozinha: [[660, 0, 0.16], [880, 0.2, 0.16]],
+            bar: [[523, 0, 0.16], [659, 0.2, 0.16]],
+            caixa: [[784, 0, 0.12], [784, 0.18, 0.12], [988, 0.36, 0.2]],
+            pronto: [[880, 0, 0.14], [1175, 0.18, 0.14], [1480, 0.36, 0.28]]
+        };
+        function tocarSom(tipo) {
+            if (!estado.som.ligado) return;
+            var c = somCtx(); if (!c) return;
+            try {
+                if (c.state === 'suspended') c.resume();
+                var t0 = c.currentTime;
+                (SONS[tipo] || SONS.pronto).forEach(function(n) {
+                    var o = c.createOscillator(), g = c.createGain();
+                    o.type = 'sine'; o.frequency.value = n[0];
+                    g.gain.setValueAtTime(0.0001, t0 + n[1]);
+                    g.gain.exponentialRampToValueAtTime(0.4, t0 + n[1] + 0.02);
+                    g.gain.exponentialRampToValueAtTime(0.0001, t0 + n[1] + n[2]);
+                    o.connect(g); g.connect(c.destination);
+                    o.start(t0 + n[1]); o.stop(t0 + n[1] + n[2] + 0.05);
+                });
+            } catch (e) {}
+        }
+        // compara a lista nova com a anterior. Pedidos lançados NESTE aparelho e mudanças feitas aqui não tocam.
+        function detectarSons(pedidos) {
+            try {
+                var ant = estado.som.base, atual = {}, tocar = {}, pronto = false;
+                for (var i = 0; i < pedidos.length; i++) {
+                    var p = pedidos[i];
+                    if (!p || !p.mesa || p.status === 'fechado') continue;
+                    var k = chavePedido(pedidos, i), st = p.statusPreparo || 'pendente';
+                    atual[k] = st;
+                    if (!ant || p.local) continue;
+                    var classe = itemEhCaixa(p) ? 'caixa' : (itemEhCozinha(p) ? 'cozinha' : 'bar');
+                    if (ant[k] === undefined) { if (estado.abaAtiva === classe && st === 'pendente') tocar[classe] = true; }
+                    else if (ant[k] !== 'pronto' && st === 'pronto') {
+                        var ov = estado.overrides[k];
+                        if (!(ov && ov.status === 'pronto') && estado.abaAtiva !== 'cozinha' && estado.abaAtiva !== 'bar') pronto = true;
+                    }
+                }
+                estado.som.base = atual;
+                if (pronto) tocarSom('pronto');
+                else if (tocar.cozinha) tocarSom('cozinha');
+                else if (tocar.bar) tocarSom('bar');
+                else if (tocar.caixa) tocarSom('caixa');
+            } catch (eDs) {}
+        }
 
         function selecionarMesa(id) {
             var alvoSel = acharMesa(id);
@@ -930,7 +1006,7 @@
 
         // ---------- GAME (segredo): em "+ Nova comanda" digite 1337 no número e GAME no nome ----------
         // ---------- atualização automática do aplicativo (iPad): compara a versão do site no servidor e recarrega sozinho ----------
-        var VERSAO_SITE = '20/11-E';
+        var VERSAO_SITE = '20/11-H';
         function atualizarRotuloVersao() {
             var r = document.getElementById('rotulo-versao');
             if (r) r.textContent = 'site v' + VERSAO_SITE + (estado.usuario ? ' · script ' + (estado.versao || '?') : '');
@@ -2681,6 +2757,12 @@
             }
             selecionarMesa(el.getAttribute('data-id'));
         }
+        // comanda com item pronto esperando ser entregue: o cartão pisca até marcarem "entregue"
+        function mesaTemPronto(m) {
+            if (!m || !m.itens) return false;
+            for (var i = 0; i < m.itens.length; i++) if (m.itens[i].statusPreparo === 'pronto') return true;
+            return false;
+        }
         function htmlCartaoAberto(ma) {
             var linhasAb = '';
                         for (var li = 0; li < ma.itens.length; li++) {
@@ -2692,7 +2774,7 @@
                                     : '<button type="button" onclick="event.stopPropagation(); mudarEstadoPorId(' + ia.idItem + ', \'entregue\')" title="Marcar como entregue" style="background:#22c55e; border:2px solid #000; border-radius:0.4rem; padding:0.1rem 0.4rem; font-size:0.75rem; font-weight:bold; min-height:0;">✔ Entregue</button>') + '</span>' +
                                 '</div>';
                         }
-                        var cartaoAb = '<div class="mesa-card ocupada' + (mesaTeste(ma) ? ' teste' : '') + (String(ma.id) === String(estado.mesaSelecionadaId) ? ' selecionada' : '') + ' cartao-aberto">' +
+                        var cartaoAb = '<div class="mesa-card ocupada' + (mesaTemPronto(ma) ? ' piscando' : '') + (mesaTeste(ma) ? ' teste' : '') + (String(ma.id) === String(estado.mesaSelecionadaId) ? ' selecionada' : '') + ' cartao-aberto">' +
                             '<div style="display:flex; justify-content:space-between;"><div><strong>' + iconeCartao(ma) + esc(tituloCartao(ma)) + '</strong>' + clienteDaMesaAberta(ma) + '</div>' + (mesaTeste(ma) ? etiquetaTeste() : '') + (ma.vip ? '<span style="font-size:0.875rem; font-weight:normal;">' + brl(totalMesaObj(ma)) + '</span>' : '<strong>' + brl(totalMesaObj(ma)) + '</strong>') + '</div>' +
                             (ma.abertaEm ? '<small>Aberta em ' + esc(ma.abertaEm) + '</small>' : '') +
                             '<div style="display:flex; flex-direction:column; gap:0.25rem;">' + linhasAb + '</div>' +
@@ -2754,7 +2836,7 @@
             }
             var idMesaFinal = chaveMesa(mesaObj);
 
-            var novo = { 
+            var novo = { local: true, 
                 mesa: idMesaFinal, 
                 produto: prod.nome, 
                 qnt: qtd,
@@ -3493,7 +3575,7 @@
                             if (itCx.length) corCx = itCx.every(function(i) { return i.statusPreparo === 'entregue'; }) ? corStatus('entregue') : corStatus('pendente');
                         }
                         var xVazia = (!m.pessoa && m.status !== 'ocupada') ? '<button type="button" onclick="event.stopPropagation(); removerComandaVazia(' + Number(m.id) + ')" title="Remover" style="padding:0 0.4rem; background:#fff; border:2px solid #000;">✖</button>' : '';
-                        return '<div class="mesa-card ' + classeOcupada + ' ' + classeSelecionada + '" data-id="' + esc(m.id) + '" onclick="selecionarMesa(this.getAttribute(\'data-id\'))">' +
+                        return '<div class="mesa-card ' + classeOcupada + ' ' + classeSelecionada + (mesaTemPronto(m) ? ' piscando' : '') + '" data-id="' + esc(m.id) + '" onclick="selecionarMesa(this.getAttribute(\'data-id\'))">' +
                             '<div style="display: flex; justify-content: space-between; gap: 0.25rem;"><div><strong style="overflow-wrap:anywhere;">' + iconeCartao(m) + esc(tituloCartao(m)) + '</strong>' + clienteDaMesaAberta(m) + '</div>' + (mesaTeste(m) ? etiquetaTeste() : '') + '<span style="white-space: nowrap;">' + bolinha('bar', corBar) + bolinha('coz', corCoz) + (corCx ? bolinha('cx', corCx) : '') + '</span></div>' +
                             '<div><div style="font-size: 0.75rem;">' + textoStatus + '</div>' + xVazia + '</div>' +
                         '</div>';
@@ -3625,7 +3707,7 @@
                             var kItem = itensKDS[z];
                             var classePreparo = kItem.statusPreparo;
                             
-                            kdsHtml += '<div class="kds-card ' + classePreparo + (kItem.teste ? ' teste' : '') + '" onclick="lidarComCliqueCard(' + kItem.idItem + ')">' +
+                            kdsHtml += '<div class="kds-card ' + classePreparo + (classePreparo === 'pendente' ? ' piscando' : '') + (kItem.teste ? ' teste' : '') + '" onclick="lidarComCliqueCard(' + kItem.idItem + ')">' +
                                 '<div style="display: flex; justify-content: space-between;"><span class="badge">' + esc(kItem.mesa) + (kItem.teste ? ' ' + etiquetaTeste() : '') + '</span><span style="font-size:0.75rem; font-weight:bold;">' + kItem.statusPreparo.toUpperCase() + '</span></div>' +
                                 '<div><div style="font-size: 1.2rem; font-weight: bold;">' + kItem.qnt + 'x ' + esc(kItem.produto) + '</div>' + htmlObs(kItem.obs, true) + '</div>' +
                                 '<div style="display: flex; justify-content: space-between; align-items: center; margin-top: 0.5rem;">' +
