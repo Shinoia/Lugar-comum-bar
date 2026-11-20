@@ -741,7 +741,7 @@
                 '<button type="button" onclick="carregarLogs()" style="border:2px solid #000; background:#facc15;">' + (L.carregando ? '⏳ Atualizando…' : '🔄 Atualizar') + '</button>' +
                 '<input type="text" id="logs-filtro" placeholder="Filtrar (nome, ação, aba...)" value="' + esc(L.filtro || '') + '" oninput="logsFiltrar(this.value)" style="width:14rem; max-width:100%;"></div>' +
                 '<div id="logs-tabela" style="background:#fff; border:2px solid #000; border-radius:0.5rem; color:#000;">' + logsTabelaHtml() + '</div>' +
-                '<p style="color:#000; font-size:0.75rem; margin-top:0.5rem;">O Google não informa quem apenas ABRE uma planilha. Aqui aparecem os logins no site (inclusive erros), as ações feitas pelo site e as edições feitas direto nas planilhas.</p></div>';
+                '<p style="color:#000; font-size:0.75rem; margin-top:0.5rem;">O Google não informa quem apenas ABRE uma planilha. Aqui aparecem os logins no site (inclusive erros), as ações feitas pelo site e as edições feitas direto nas planilhas. Esses registros ficam guardados no sistema, não na planilha.</p></div>';
         }
         setInterval(function() { if (estado.abaAtiva === 'logs' && !document.hidden) carregarLogs(true); }, 20000);
 
@@ -930,7 +930,7 @@
 
         // ---------- GAME (segredo): em "+ Nova comanda" digite 1337 no número e GAME no nome ----------
         // ---------- atualização automática do aplicativo (iPad): compara a versão do site no servidor e recarrega sozinho ----------
-        var VERSAO_SITE = '20/11-C';
+        var VERSAO_SITE = '20/11-E';
         function atualizarRotuloVersao() {
             var r = document.getElementById('rotulo-versao');
             if (r) r.textContent = 'site v' + VERSAO_SITE + (estado.usuario ? ' · script ' + (estado.versao || '?') : '');
