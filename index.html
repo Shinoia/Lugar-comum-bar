@@ -25,6 +25,8 @@
         .active-cozinha { background: #f97316; color: #000; }
         .active-bar { background: #38bdf8; color: #000; }
         .active-abertas { background: #c4b5fd; color: #000; }
+        .active-vip { background: #fde68a; color: #000; }
+        .active-logs { background: #e9d5ff; color: #000; }
         .btn-dia { background: #4ade80; border: 2px solid #000; }
         main { flex: 1; padding: 1.5rem; display: block; }
         .grid-caixa { display: grid; grid-template-columns: 1fr; gap: 1.5rem; }
@@ -64,6 +66,19 @@
         .sem-gap .form-grupo > *, .sem-gap .lista-itens > *, .sem-gap .kds-card > *, .sem-gap [style*="flex-direction:column"] > * { margin-right: 0; margin-bottom: 0.4rem; }
         html { -webkit-text-size-adjust: 100%; }
         body { padding-top: env(safe-area-inset-top); }
+        /* modo SUPREME: tema roxo (as cores de status e de produto continuam iguais) */
+        body.supreme { background-color: #7c3aed; }
+        body.supreme header { background-color: #5b21b6; border-bottom-color: #3b0764; }
+        body.supreme .nav-buttons { background: #5b21b6; border-color: #3b0764; }
+        body.supreme .btn-tab { color: #fff; }
+        body.supreme .btn-tab[class*="active-"] { color: #000; }
+        body.supreme .painel-lateral { background: #a855f7; border-color: #6b21a8; }
+        body.supreme .mesa-card, body.supreme .form-grupo, body.supreme .item-row { background: #c084fc; border-color: #6b21a8; }
+        body.supreme .mesa-card.ocupada { background: #fef08a; border-color: #000; }
+        body.supreme .mesa-card.teste { background: #e9d5ff !important; border-color: #3b0764 !important; }
+        body.supreme .kds-card { border-color: #6b21a8; }
+        body.supreme [style*="background:#b91c1c"] { background: #a855f7 !important; }
+        body.supreme [style*="background:#ef4444"] { background: #c084fc !important; }
     </style>
 </head>
 <body>
@@ -76,7 +91,9 @@
             <button id="btn-aba-cozinha" class="btn-tab" onclick="mudarAba('cozinha')">🍳 Cozinha</button>
             <button id="btn-aba-bar" class="btn-tab" onclick="mudarAba('bar')">🍻 Bar</button>
             <button id="btn-aba-abertas" class="btn-tab" onclick="mudarAba('abertas')">📋 Abertas</button>
+            <button id="btn-aba-vip" class="btn-tab" onclick="mudarAba('vip')">⭐ VIPs</button>
             <button id="btn-aba-finalizadas" class="btn-tab" onclick="mudarAba('finalizadas')">✅ Finalizadas</button>
+            <button id="btn-aba-logs" class="btn-tab" style="display:none;" onclick="mudarAba('logs')">🛡️ Logs</button>
             <button class="btn-dia" id="btn-dia" onclick="finalizarDia()">🏁 Finalizar Dia</button>
             <span id="info-usuario" class="sync-status" style="background:#fff;"></span>
             <button class="btn-tab" onclick="sair()" title="Sair deste aparelho">Sair</button>
@@ -117,6 +134,14 @@
         var SESSAO = lerSessao();
         var CHAVE = SESSAO ? SESSAO.chave : '';
         var USUARIO = SESSAO ? SESSAO.usuario : '';
+        var DEV = (function() {
+            try {
+                var d = localStorage.getItem('lcb_dev');
+                if (!d) { d = Math.random().toString(36).substring(2, 6); localStorage.setItem('lcb_dev', d); }
+                var ua = navigator.userAgent || '', plat = /iPad/.test(ua) ? 'iPad' : /iPhone/.test(ua) ? 'iPhone' : /Android/.test(ua) ? 'Android' : /Windows/.test(ua) ? 'Windows' : /Mac/.test(ua) ? 'Mac' : /Linux/.test(ua) ? 'Linux' : 'Aparelho';
+                return plat + ' ' + d;
+            } catch (e) { return 'Aparelho'; }
+        })();
         var fetchOriginal = fetch;
         fetch = function(u, o) {
             if (String(u).indexOf(API_URL) !== 0) return fetchOriginal(u, o);
@@ -125,12 +150,12 @@
             if (o && o.method === 'POST') {
                 var corpo = {};
                 try { corpo = JSON.parse(o.body); } catch (e) {}
-                corpo.chave = CHAVE; corpo.usuario = USUARIO;
+                corpo.chave = CHAVE; corpo.usuario = USUARIO; corpo.dev = DEV;
                 var o2 = {}; for (var k in o) o2[k] = o[k];
                 o2.body = JSON.stringify(corpo);
                 return fetchOriginal(u, o2);
             }
-            u = String(u) + (String(u).indexOf('?') >= 0 ? '&' : '?') + 'chave=' + encodeURIComponent(CHAVE) + '&usuario=' + encodeURIComponent(USUARIO);
+            u = String(u) + (String(u).indexOf('?') >= 0 ? '&' : '?') + 'chave=' + encodeURIComponent(CHAVE) + '&usuario=' + encodeURIComponent(USUARIO) + '&dev=' + encodeURIComponent(DEV);
             return fetchOriginal(u, o).then(function(res) {
                 return res.clone().json().then(function(j) {
                     if (j && j.negado) {
@@ -181,9 +206,14 @@
         function atualizarUsuario() {
             var el = document.getElementById('info-usuario');
             if (!el) return;
+            try { document.body.className = document.body.className.replace(/\s*\bsupreme\b/g, '') + (estado.usuario && estado.usuario.supreme ? ' supreme' : ''); } catch (eS) {}
+            var bl = document.getElementById('btn-aba-logs');
+            if (bl) bl.style.display = (estado.usuario && estado.usuario.supreme) ? '' : 'none';
+            if (estado.abaAtiva === 'logs' && !(estado.usuario && estado.usuario.supreme)) { estado.abaAtiva = 'caixa'; try { mudarAba('caixa'); } catch (eL) {} }
             var bd = document.getElementById('btn-dia');
             if (bd) bd.style.display = (estado.usuario && !estado.usuario.admin) ? 'none' : ''; // user não vê Finalizar Dia
-            el.textContent = estado.usuario ? ('👤 ' + estado.usuario.nome + (estado.usuario.supreme ? ' (supreme)' : estado.usuario.admin ? ' (admin)' : ' (user)') + ' · script ' + (estado.versao || '?')) : '';
+            el.textContent = estado.usuario ? ('👤 ' + estado.usuario.nome + (estado.usuario.supreme ? ' (supreme)' : estado.usuario.admin ? ' (admin)' : ' (user)')) : '';
+            atualizarRotuloVersao();
         }
         function exigirAdmin() {
             if (estado.usuario && !estado.usuario.admin) { alert('Somente administradores podem fazer isso.'); return false; }
@@ -649,9 +679,71 @@
             if (btnAbertas) btnAbertas.className = "btn-tab " + (aba === 'abertas' ? 'active-abertas' : '');
             var btnFin = document.getElementById('btn-aba-finalizadas');
             if (btnFin) btnFin.className = "btn-tab " + (aba === 'finalizadas' ? 'active-abertas' : '');
+            var btnVip = document.getElementById('btn-aba-vip');
+            if (btnVip) btnVip.className = "btn-tab " + (aba === 'vip' ? 'active-vip' : '');
+            var btnLogs = document.getElementById('btn-aba-logs');
+            if (btnLogs) btnLogs.className = "btn-tab " + (aba === 'logs' ? 'active-logs' : '');
+            if (aba === 'logs') { if (!(estado.usuario && estado.usuario.supreme)) { aba = estado.abaAtiva = 'caixa'; mudarAba('caixa'); return; } carregarLogs(); }
             
             renderizar();
         }
+
+
+        // ---------- página de logs (só supreme): logins, ações no sistema e edições nas planilhas ----------
+        estado.logs = { tipo: 'logins', dados: {}, total: {}, erro: '', carregando: false, filtro: '', quando: '' };
+        var LOGS_TIPOS = [
+            { k: 'logins', nome: '🔑 Logins', cab: ['Data/hora', 'Usuário', 'Resultado', 'Aparelho'] },
+            { k: 'planilhas', nome: '📄 Edições nas planilhas', cab: ['Data/hora', 'Quem (e-mail)', 'Planilha', 'Aba', 'Célula', 'Mudança'] },
+            { k: 'acoes', nome: '🧾 Ações no sistema', cab: ['Data/hora', 'Usuário', 'Ação', 'Detalhes'] }
+        ];
+        function carregarLogs(silencioso) {
+            var L = estado.logs, tipo = L.tipo;
+            if (L.carregando) return;
+            L.carregando = true; L.erro = '';
+            if (!silencioso) renderizar();
+            fetch(API_URL + '?acao=logs&tipo=' + encodeURIComponent(tipo) + '&n=300')
+                .then(function(res) { return res.json(); })
+                .then(function(r) {
+                    L.carregando = false;
+                    if (r && r.result === 'success') { L.dados[tipo] = r.linhas || []; L.total[tipo] = r.total || 0; L.quando = agoraBR(); }
+                    else L.erro = (r && r.error) || 'Não foi possível carregar. Confira se o Codigo.gs novo está implantado.';
+                    if (estado.abaAtiva === 'logs') { if (silencioso) desenharLogs(); else renderizar(); }
+                })
+                .catch(function() { L.carregando = false; L.erro = 'Falha de conexão.'; if (estado.abaAtiva === 'logs') renderizar(); });
+        }
+        function logsTipo(k) { estado.logs.tipo = k; estado.logs.erro = ''; renderizar(); carregarLogs(); }
+        function logsFiltrar(v) { estado.logs.filtro = v; desenharLogs(); }
+        function logsTabelaHtml() {
+            var L = estado.logs, def = LOGS_TIPOS.filter(function(t) { return t.k === L.tipo; })[0], linhas = L.dados[L.tipo];
+            if (L.erro) return '<p style="padding:1rem; font-weight:bold; color:#b91c1c;">' + esc(L.erro) + '</p>';
+            if (!linhas) return '<p style="padding:1rem;">' + (L.carregando ? 'Carregando…' : 'Sem dados ainda.') + '</p>';
+            var q = semAcento(L.filtro || ''), n = 0, corpo = '';
+            for (var i = 0; i < linhas.length; i++) {
+                var lin = linhas[i];
+                if (q && semAcento(lin.join(' ')) .indexOf(q) < 0) continue;
+                n++;
+                var ruim = L.tipo === 'logins' && String(lin[2]) !== 'Entrou';
+                corpo += '<tr' + (ruim ? ' style="background:#fee2e2;"' : '') + '>' + lin.map(function(c) { return '<td style="padding:0.3rem 0.5rem; border-bottom:1px solid #ddd; vertical-align:top;">' + esc(c) + '</td>'; }).join('') + '</tr>';
+            }
+            if (!n) return '<p style="padding:1rem;">Nenhum registro' + (q ? ' para esse filtro' : '') + '.</p>';
+            return '<div style="font-size:0.75rem; padding:0.3rem 0.5rem;">Mostrando ' + n + ' de ' + (L.total[L.tipo] || linhas.length) + ' (os mais recentes primeiro; atualizado às ' + esc(L.quando || '') + ')</div>' +
+                '<div style="overflow:auto; max-height:70vh;"><table style="border-collapse:collapse; width:100%; font-size:0.8rem; text-align:left;"><thead><tr>' +
+                def.cab.map(function(c) { return '<th style="position:sticky; top:0; background:#e5e7eb; padding:0.4rem 0.5rem;">' + esc(c) + '</th>'; }).join('') + '</tr></thead><tbody>' + corpo + '</tbody></table></div>';
+        }
+        function desenharLogs() { var el = document.getElementById('logs-tabela'); if (el) el.innerHTML = logsTabelaHtml(); }
+        function logsPaginaHtml() {
+            var L = estado.logs;
+            var abas = LOGS_TIPOS.map(function(t) {
+                return '<button type="button" onclick="logsTipo(\'' + t.k + '\')" style="border:2px solid #000; background:' + (L.tipo === t.k ? '#e9d5ff' : '#fff') + ';">' + t.nome + '</button>';
+            }).join('');
+            return '<div><h2 style="color:#000; margin-bottom:0.5rem;">🛡️ Logs (somente supreme)</h2>' +
+                '<div style="display:flex; gap:0.4rem; flex-wrap:wrap; margin-bottom:0.6rem; align-items:center;">' + abas +
+                '<button type="button" onclick="carregarLogs()" style="border:2px solid #000; background:#facc15;">' + (L.carregando ? '⏳ Atualizando…' : '🔄 Atualizar') + '</button>' +
+                '<input type="text" id="logs-filtro" placeholder="Filtrar (nome, ação, aba...)" value="' + esc(L.filtro || '') + '" oninput="logsFiltrar(this.value)" style="width:14rem; max-width:100%;"></div>' +
+                '<div id="logs-tabela" style="background:#fff; border:2px solid #000; border-radius:0.5rem; color:#000;">' + logsTabelaHtml() + '</div>' +
+                '<p style="color:#000; font-size:0.75rem; margin-top:0.5rem;">O Google não informa quem apenas ABRE uma planilha. Aqui aparecem os logins no site (inclusive erros), as ações feitas pelo site e as edições feitas direto nas planilhas.</p></div>';
+        }
+        setInterval(function() { if (estado.abaAtiva === 'logs' && !document.hidden) carregarLogs(true); }, 20000);
 
         function selecionarMesa(id) {
             var alvoSel = acharMesa(id);
@@ -838,12 +930,17 @@
 
         // ---------- GAME (segredo): em "+ Nova comanda" digite 1337 no número e GAME no nome ----------
         // ---------- atualização automática do aplicativo (iPad): compara a versão do site no servidor e recarrega sozinho ----------
-        var VERSAO_SITE = '19/11-D';
+        var VERSAO_SITE = '20/11-C';
+        function atualizarRotuloVersao() {
+            var r = document.getElementById('rotulo-versao');
+            if (r) r.textContent = 'site v' + VERSAO_SITE + (estado.usuario ? ' · script ' + (estado.versao || '?') : '');
+        }
         (function() {
             var rotulo = document.createElement('div');
-            rotulo.textContent = 'v' + VERSAO_SITE;
-            rotulo.style.cssText = 'position:fixed; left:4px; bottom:2px; font-size:9px; color:#000; opacity:0.35; pointer-events:none; z-index:5;';
+            rotulo.id = 'rotulo-versao';
+            rotulo.style.cssText = 'position:fixed; right:6px; bottom:4px; font-size:11px; font-weight:bold; color:#facc15; background:rgba(0,0,0,0.65); padding:2px 8px; border-radius:6px; pointer-events:none; z-index:5;';
             document.body.appendChild(rotulo);
+            atualizarRotuloVersao();
             var checando = false;
             function ocupado() { // não recarrega no meio de uma digitação ou com o jogo aberto
                 var a = document.activeElement, t = a && a.tagName ? a.tagName.toLowerCase() : '';
@@ -2568,9 +2665,10 @@
             processarPedidos();
             var alvo = estado.pessoas.find(function(p) { return p.id.toLowerCase() === chaveMin; });
 
-            mudarAba('caixa');
+            mudarAba(estado.abaAtiva === 'vip' ? 'vip' : 'caixa');
             if (alvo) selecionarMesa(alvo.id);
         }
+        function novaVipRapida() { janelaVip(); }
         function abrirNaCaixa(id) { mudarAba('caixa'); selecionarMesa(id); }
 
         // clicar em qualquer parte do cartão (menos nos botões/campos) abre a comanda completa no painel da direita
@@ -3441,6 +3539,22 @@
                         (abHtml ? '<div class="grid-cartoes">' + abHtml + '</div>' : '<p style="color:#000; font-weight:bold; padding:2rem; text-align:center;">Nenhuma mesa em aberto.</p>') +
                         (vipAbHtml ? '<h2 style="color:#000; margin: 1.5rem 0 0.5rem;">⭐ VIP em aberto: ' + vipLista.length + '</h2><p style="color:#000; font-size:0.875rem; font-weight:normal; margin-bottom:0.25rem;">Total: ' + brl(totalVipAb) + '</p><p style="color:#000; font-size:0.8rem; margin-bottom:0.75rem;">Contas mensais: não entram no "Encerrar todas" nem no fechamento do dia.</p><div class="grid-cartoes">' + vipAbHtml + '</div>' : '') +
                     '</div>' + lateralAb + '</div>';
+                } else if (estado.abaAtiva === 'vip') {
+                    var vipsAb = todasMesas().filter(function(m) { return m.vip && m.status === 'ocupada'; });
+                    var vipsHtml = '', totVips = 0;
+                    for (var vi = 0; vi < vipsAb.length; vi++) { vipsHtml += htmlCartaoAberto(vipsAb[vi]); totVips += totalMesaObj(vipsAb[vi]); }
+                    var mesaSelVip = acharMesa(estado.mesaSelecionadaId);
+                    var lateralVip = mesaSelVip
+                        ? htmlPainelMesa(mesaSelVip)
+                        : '<div class="painel-lateral" style="justify-content: center; align-items: center; text-align: center;"><p>👆 Clique em "➕ Incluir produtos" em uma conta VIP para lançar pedidos aqui.</p></div>';
+                    main.innerHTML = '<div class="grid-caixa"><div>' +
+                        '<div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.75rem; margin-bottom:0.5rem;"><h2 style="color:#000;">⭐ Comandas VIP abertas: ' + vipsAb.length + ' | ' + brl(totVips) + '</h2>' +
+                            '<button onclick="novaVipRapida()" style="background:#facc15; border:2px solid #000;">+ Nova conta VIP</button></div>' +
+                        '<p style="color:#000; font-size:0.8rem; margin-bottom:0.75rem;">Contas mensais: continuam abertas de um dia para o outro e não entram no fechamento do dia.</p>' +
+                        (vipsHtml ? '<div class="grid-cartoes">' + vipsHtml + '</div>' : '<p style="color:#000; font-weight:bold; padding:2rem; text-align:center;">Nenhuma comanda VIP aberta.</p>') +
+                        '</div>' + lateralVip + '</div>';
+                } else if (estado.abaAtiva === 'logs') {
+                    main.innerHTML = logsPaginaHtml();
                 } else if (estado.abaAtiva === 'finalizadas') {
                     var finHtml = '', totalFin = 0, porForma = {}, totalVipFin = 0;
                     estado.finalizadas.forEach(function(f) {
