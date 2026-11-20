@@ -1007,7 +1007,7 @@
 
         // ---------- GAME (segredo): em "+ Nova comanda" digite 1337 no número e GAME no nome ----------
         // ---------- atualização automática do aplicativo (iPad): compara a versão do site no servidor e recarrega sozinho ----------
-        var VERSAO_SITE = '20/11-L';
+        var VERSAO_SITE = '20/11-M';
         function atualizarRotuloVersao() {
             var r = document.getElementById('rotulo-versao');
             if (r) r.textContent = 'site v' + VERSAO_SITE + (estado.usuario ? ' · script ' + (estado.versao || '?') : '');
@@ -1017,6 +1017,11 @@
             rotulo.id = 'rotulo-versao';
             rotulo.style.cssText = 'position:fixed; right:6px; bottom:4px; font-size:11px; font-weight:bold; color:#facc15; background:rgba(0,0,0,0.65); padding:2px 8px; border-radius:6px; pointer-events:none; z-index:5;';
             document.body.appendChild(rotulo);
+            var marca = document.createElement('div'); // marca d'água "Lugar Comum Bar": fica ATRÁS do conteúdo (comandas e janelas ficam por cima)
+            marca.id = 'marca-bar';
+            marca.innerHTML = 'Lugar Comum<br>Bar';
+            marca.style.cssText = "position:fixed; right:12px; bottom:30px; text-align:right; font-family:Impact,Haettenschweiler,'Arial Narrow',sans-serif; font-weight:900; text-transform:uppercase; color:#f1c73d; font-size:1.7rem; line-height:1.05; pointer-events:none; z-index:-1;";
+            document.body.appendChild(marca);
             atualizarRotuloVersao();
             var checando = false;
             function ocupado() { // não recarrega no meio de uma digitação ou com o jogo aberto
