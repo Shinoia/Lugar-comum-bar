@@ -1007,7 +1007,7 @@
 
         // ---------- GAME (segredo): em "+ Nova comanda" digite 1337 no número e GAME no nome ----------
         // ---------- atualização automática do aplicativo (iPad): compara a versão do site no servidor e recarrega sozinho ----------
-        var VERSAO_SITE = '20/11-P';
+        var VERSAO_SITE = '20/11-Q';
         function atualizarRotuloVersao() {
             var r = document.getElementById('rotulo-versao');
             if (r) r.textContent = 'site v' + VERSAO_SITE + (estado.usuario ? ' · script ' + (estado.versao || '?') : '');
@@ -3207,6 +3207,140 @@
             });
         }
 
+        // ---------- dividir conta: "por produto" (cada item vai para o nome de uma pessoa) ou "por pessoas" (divide o total em partes iguais, só para referência) ----------
+        function abrirDivisao(id) {
+            var m = acharMesa(id);
+            if (!m || !m.itens.length) return;
+            estado.divisao = { id: id, modo: null, atrib: {}, npessoas: 2, fechandoNome: '', formaDiv: '', livreDiv: '' };
+            fecharJanelaDivisao();
+            var el = document.createElement('div');
+            el.id = 'janela-divisao';
+            el.style.cssText = 'position:fixed; top:0; left:0; right:0; bottom:0; width:100%; height:100%; background:rgba(0,0,0,0.5); display:flex; align-items:center; justify-content:center; z-index:60; padding:1rem;';
+            document.body.appendChild(el);
+            desenharDivisao();
+        }
+        function fecharJanelaDivisao() {
+            var el = document.getElementById('janela-divisao');
+            if (el && el.parentNode) el.parentNode.removeChild(el);
+        }
+        function escolherModoDivisao(modo) { if (estado.divisao) { estado.divisao.modo = modo; desenharDivisao(); } }
+        function divisaoNpessoas(v) { if (estado.divisao) { estado.divisao.npessoas = Math.max(1, Math.min(30, Number(v) || 1)); desenharDivisao(); } }
+        function atribuirItemDivisao(linha, nome) {
+            if (!estado.divisao) return;
+            var n = String(nome || '').trim().substring(0, 30);
+            if (n) estado.divisao.atrib[linha] = n; else delete estado.divisao.atrib[linha];
+            desenharDivisao();
+        }
+        function divisaoFormaEscolher(fp) { if (estado.divisao) { estado.divisao.formaDiv = fp; estado.divisao.livreDiv = ''; desenharDivisao(); } }
+        function divisaoLivreMudar(v) { if (estado.divisao) estado.divisao.livreDiv = v; }
+        function divisaoAbrirPagamento(nome) { if (estado.divisao) { estado.divisao.fechandoNome = nome; estado.divisao.formaDiv = ''; estado.divisao.livreDiv = ''; desenharDivisao(); } }
+        function divisaoCancelarPagamento() { if (estado.divisao) { estado.divisao.fechandoNome = ''; desenharDivisao(); } }
+        function desenharDivisao() {
+            var el = document.getElementById('janela-divisao'), d = estado.divisao;
+            if (!el || !d) return;
+            var m = acharMesa(d.id);
+            if (!m) { fecharJanelaDivisao(); return; }
+            var corpo = '';
+            if (!d.modo) {
+                corpo = '<p style="font-size:0.85rem; margin-bottom:0.75rem;">Como você quer dividir esta conta?</p>' +
+                    '<div style="display:flex; flex-direction:column; gap:0.5rem;">' +
+                        '<button type="button" onclick="escolherModoDivisao(\'produto\')" style="background:#fff; border:2px solid #000; padding:0.75rem; font-weight:bold; text-align:left;">📦 Por produto<br><small style="font-weight:normal;">Digitar quem consumiu cada item</small></button>' +
+                        '<button type="button" onclick="escolherModoDivisao(\'pessoas\')" style="background:#fff; border:2px solid #000; padding:0.75rem; font-weight:bold; text-align:left;">👥 Por pessoas<br><small style="font-weight:normal;">Dividir o total em partes iguais</small></button>' +
+                    '</div>';
+            } else if (d.modo === 'pessoas') {
+                var total = totalMesaObj(m), n = d.npessoas, cada = n > 0 ? Math.floor(total * 100 / n) / 100 : 0, sobra = Math.round((total - cada * n) * 100) / 100;
+                var partes = '';
+                for (var i = 1; i <= n; i++) partes += '<div style="display:flex; justify-content:space-between; font-size:0.9rem; padding:0.25rem 0;"><span>Pessoa ' + i + '</span><span><b>' + brl(cada + (i === n ? sobra : 0)) + '</b></span></div>';
+                corpo = '<label style="font-size:0.85rem;">Número de pessoas</label>' +
+                    '<input type="number" min="1" max="30" value="' + n + '" oninput="divisaoNpessoas(this.value)" style="width:100%; margin:0.25rem 0 0.75rem;">' +
+                    '<div style="border-top:1px dashed #000; padding-top:0.5rem;">' + partes + '</div>' +
+                    '<p style="font-size:0.75rem; margin-top:0.5rem;">Isso é só para referência (a divisão em si não muda nada no sistema). A comanda continua inteira; feche normalmente em "Fechar Conta" quando todos já tiverem pago a parte deles.</p>' +
+                    '<button type="button" onclick="escolherModoDivisao(null)" style="background:#fff; border:2px solid #000; width:100%; margin-top:0.75rem;">← Voltar</button>';
+            } else { // 'produto'
+                if (!m.itens.length) {
+                    corpo = '<p style="font-size:0.85rem;">Todos os itens já foram fechados.</p>';
+                } else {
+                    var grupos = {}, semNome = 0;
+                    m.itens.forEach(function(it) {
+                        var nome = d.atrib[it.linha] || '';
+                        if (!nome) { semNome++; return; }
+                        if (!grupos[nome]) grupos[nome] = { total: 0 };
+                        grupos[nome].total += it.qnt * it.preco;
+                    });
+                    var nomesUnicos = []; Object.keys(d.atrib).forEach(function(k) { var v = d.atrib[k]; if (nomesUnicos.indexOf(v) < 0) nomesUnicos.push(v); });
+                    var listaItens = m.itens.map(function(it) {
+                        return '<div style="display:flex; justify-content:space-between; align-items:center; gap:0.5rem; padding:0.3rem 0; border-bottom:1px solid #eee;">' +
+                            '<span style="font-size:0.85rem;">' + it.qnt + 'x ' + esc(it.produto) + '<br><small>' + brl(it.qnt * it.preco) + '</small></span>' +
+                            '<input type="text" list="divisao-nomes" value="' + esc(d.atrib[it.linha] || '') + '" placeholder="Nome da pessoa" maxlength="30" oninput="atribuirItemDivisao(' + it.linha + ', this.value)" style="width:9rem; margin:0;">' +
+                        '</div>';
+                    }).join('');
+                    var listaGrupos = Object.keys(grupos).map(function(nome) {
+                        var g = grupos[nome], souEu = d.fechandoNome === nome;
+                        var nomeJs = esc(nome).replace(/'/g, "\\'");
+                        var pagamento = '';
+                        if (souEu) {
+                            pagamento = '<div style="display:grid; grid-template-columns:1fr 1fr; gap:0.4rem; margin-top:0.5rem;">' +
+                                FORMAS_PAGAMENTO.map(function(fp) {
+                                    var sel = d.formaDiv === fp;
+                                    return '<button type="button" data-fp="' + esc(fp) + '" onclick="divisaoFormaEscolher(this.getAttribute(\'data-fp\'))" style="border:2px solid #000; padding:0.5rem; font-weight:bold; background:' + (sel ? '#4ade80' : '#fff') + ';">' + (sel ? '✔ ' : '') + esc(fp) + '</button>';
+                                }).join('') + '</div>' +
+                                (estado.usuario && estado.usuario.admin ? '<input type="text" placeholder="Outra forma ou decisão (só admin)" maxlength="60" value="' + esc(d.livreDiv || '') + '" oninput="divisaoLivreMudar(this.value)" style="width:100%; margin-top:0.4rem;">' : '') +
+                                '<div style="display:flex; gap:0.4rem; margin-top:0.5rem;"><button type="button" onclick="divisaoCancelarPagamento()" style="background:#fff; border:2px solid #000; flex:1;">Cancelar</button>' +
+                                '<button type="button" onclick="confirmarDivisaoParcial(\'' + nomeJs + '\')" style="background:#f87171; border:2px solid #000; flex:1;">Confirmar pagamento</button></div>';
+                        }
+                        return '<div style="background:#f9fafb; border:2px solid #000; border-radius:0.5rem; padding:0.5rem; margin-top:0.5rem;">' +
+                            '<div style="display:flex; justify-content:space-between; font-weight:bold;"><span>' + esc(nome) + '</span><span>' + brl(g.total) + '</span></div>' +
+                            (souEu ? pagamento : '<button type="button" onclick="divisaoAbrirPagamento(\'' + nomeJs + '\')" style="background:#fff; border:2px solid #000; width:100%; margin-top:0.4rem;">💳 Fechar parte de ' + esc(nome) + '</button>') +
+                        '</div>';
+                    }).join('');
+                    corpo = '<datalist id="divisao-nomes">' + nomesUnicos.map(function(n) { return '<option value="' + esc(n) + '">'; }).join('') + '</datalist>' +
+                        '<p style="font-size:0.8rem; margin-bottom:0.25rem;">Digite o nome de quem consumiu cada item:</p>' +
+                        listaItens +
+                        (semNome ? '<p style="font-size:0.75rem; color:#b91c1c; margin-top:0.4rem;">' + semNome + ' item(ns) ainda sem nome.</p>' : '') +
+                        listaGrupos;
+                }
+                corpo += '<button type="button" onclick="escolherModoDivisao(null)" style="background:#fff; border:2px solid #000; width:100%; margin-top:0.75rem;">← Voltar</button>';
+            }
+            el.innerHTML = '<div style="background:#fff; border:3px solid #000; border-radius:0.75rem; padding:1rem; width:100%; max-width:26rem; color:#000; max-height:90vh; overflow:auto;">' +
+                '<h3 style="margin-bottom:0.5rem;">➗ Dividir ' + esc(nomeMesa(m)) + '</h3>' + corpo +
+                '<button type="button" onclick="fecharJanelaDivisao()" style="background:#fff; border:2px solid #000; width:100%; margin-top:0.75rem;">Fechar</button></div>';
+        }
+        function confirmarDivisaoParcial(nome) {
+            var d = estado.divisao;
+            if (!d) return;
+            var m = acharMesa(d.id);
+            if (!m) { fecharJanelaDivisao(); return; }
+            var livre = (estado.usuario && estado.usuario.admin) ? String(d.livreDiv || '').replace(/\s+/g, ' ').trim().substring(0, 60) : '';
+            if (!d.formaDiv && !livre) { alert('Escolha a forma de pagamento.'); return; }
+            var itensNome = m.itens.filter(function(it) { return d.atrib[it.linha] === nome; });
+            var pedidos = itensNome.map(function(it) { return estado.pedidosGlobais[it.idItem]; }).filter(function(p) { return p && p.linha; });
+            if (!pedidos.length) { alert('Aguarde alguns segundos (pedido ainda sendo gravado) e tente de novo.'); return; }
+            var linhas = pedidos.map(function(p) { return p.linha; });
+            var idAlvo = m.pessoa ? m.id : (m.idExibicao || m.id);
+            if (!estado.cancelPend) estado.cancelPend = [];
+            var regs = pedidos.map(function(p) { return { sig: sigItem(p), q: Number(p.qnt), qo: Number(p.qnt), t: Date.now() }; });
+            estado.cancelPend = estado.cancelPend.concat(regs);
+            estado.pedidosGlobais = aplicarFechando(estado.pedidosGlobais);
+            itensNome.forEach(function(it) { delete d.atrib[it.linha]; });
+            d.fechandoNome = ''; d.formaDiv = ''; d.livreDiv = '';
+            processarPedidos();
+            renderizar();
+            desenharDivisao();
+            var desfazer = function(txt) {
+                estado.cancelPend = (estado.cancelPend || []).filter(function(e) { return regs.indexOf(e) < 0; });
+                if (txt) alert(txt);
+                sincronizar();
+            };
+            fetch(API_URL + '?acao=fechar_parcial&mesa=' + encodeURIComponent(idAlvo) + '&linhas=' + encodeURIComponent(linhas.join(',')) +
+                  '&nome=' + encodeURIComponent(nome) + '&forma=' + encodeURIComponent(livre ? '' : d.formaDiv) + (livre ? '&forma_livre=' + encodeURIComponent(livre) : ''))
+                .then(function(res) { return res.json(); })
+                .then(function(r) {
+                    if (r && r.result === 'success') { sincronizar(); return; }
+                    desfazer((r && r.error) || 'Não foi possível fechar essa parte. Confira se a versão nova do Codigo.gs está implantada.');
+                })
+                .catch(function() { desfazer('Falha de conexão. Essa parte não foi fechada; tente novamente.'); });
+        }
+
         // ---------- impressão térmica / comandas finalizadas ----------
         function lerConfig(nome, padrao) { try { var v = localStorage.getItem('lcb_' + nome); return v === null ? padrao : v; } catch (e) { return padrao; } }
         function gravarConfig(nome, v) { try { localStorage.setItem('lcb_' + nome, v); } catch (e) {} }
@@ -3508,7 +3642,8 @@
                 '<div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #991b1b; padding-bottom: 0.75rem; margin-bottom: 1rem;">' +
                     '<h3>' + esc(nomeMesa(mesaSel)) + '</h3>' +
                     '<div style="display:flex; gap:0.4rem;"><button data-id="' + esc(mesaSel.id) + '" onclick="imprimirAberta(this.getAttribute(\'data-id\'))" title="Imprimir conferência na térmica" style="background:#fff; border: 2px solid #000; padding: 0.25rem 0.5rem; border-radius: 0.5rem;">🖨️</button>' +
-                    '<button data-id="' + esc(mesaSel.id) + '" onclick="fecharMesa(this.getAttribute(\'data-id\'))" style="background: #f87171; border: 2px solid #000; padding: 0.25rem 0.5rem; border-radius: 0.5rem;">' + 'Fechar Conta' + '</button></div>' +
+                    '<button data-id="' + esc(mesaSel.id) + '" onclick="fecharMesa(this.getAttribute(\'data-id\'))" style="background: #f87171; border: 2px solid #000; padding: 0.25rem 0.5rem; border-radius: 0.5rem;">' + 'Fechar Conta' + '</button>' +
+                    (mesaSel.itens.length > 1 && !mesaSel.vip ? '<button data-id="' + esc(mesaSel.id) + '" onclick="abrirDivisao(this.getAttribute(\'data-id\'))" style="background:#fff; border: 2px solid #000; padding: 0.25rem 0.5rem; border-radius: 0.5rem;">➗ Dividir</button>' : '') + '</div>' +
                 '</div>' +
                 (mesaSel.vip
                     ? '<div style="margin-bottom: 1rem; font-size: 0.875rem; font-weight: normal;">Total: ' + brl(valorTotalComanda) + '</div>'
