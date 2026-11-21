@@ -97,7 +97,7 @@
             <h1><span id="icone-foice">☭</span> Lugar Comum Bar</h1>
         </div>
         <div class="nav-buttons">
-            <button id="btn-aba-caixa" class="btn-tab active-caixa" onclick="mudarAba('caixa')">🧮 Caixa / Mesas</button>
+            <button id="btn-aba-caixa" class="btn-tab active-caixa" onclick="mudarAba('caixa')">🧮 Caixa / Comandas</button>
             <button id="btn-aba-cozinha" class="btn-tab" onclick="mudarAba('cozinha')">🍳 Cozinha</button>
             <button id="btn-aba-bar" class="btn-tab" onclick="mudarAba('bar')">🍻 Bar</button>
             <button id="btn-aba-abertas" class="btn-tab" onclick="mudarAba('abertas')">📋 Abertas</button>
@@ -1028,7 +1028,7 @@
 
         // ---------- GAME (segredo): em "+ Nova comanda" digite 1337 no número e GAME no nome ----------
         // ---------- atualização automática do aplicativo (iPad): compara a versão do site no servidor e recarrega sozinho ----------
-        var VERSAO_SITE = '21/11-F';
+        var VERSAO_SITE = '21/11-G';
         function atualizarRotuloVersao() {
             var r = document.getElementById('rotulo-versao');
             if (r) r.textContent = 'site v' + VERSAO_SITE + (estado.usuario ? ' · script ' + (estado.versao || '?') : '');
@@ -2814,7 +2814,7 @@
                             (ma.abertaEm ? '<small>Aberta em ' + esc(ma.abertaEm) + '</small>' : '') +
                             '<div style="display:flex; flex-direction:column; gap:0.25rem;">' + linhasAb + '</div>' +
                             '<div style="display:flex; gap:0.4rem; flex-wrap:wrap;"><button data-id="' + esc(ma.id) + '" onclick="event.stopPropagation(); selecionarMesa(this.getAttribute(\'data-id\'))" style="background:#fff; border:2px solid #000; flex:1;">➕ Incluir produtos</button>' +
-                            (ma.itens.length ? '<button data-id="' + esc(ma.id) + '" onclick="event.stopPropagation(); fecharMesa(this.getAttribute(\'data-id\'))" style="background:#f87171; border:2px solid #000; flex:1;">💳 Fechar comanda</button>' +
+                            (ma.itens.length ? '<button data-id="' + esc(ma.id) + '" onclick="event.stopPropagation(); fecharMesa(this.getAttribute(\'data-id\'))" style="background:#f87171; border:2px solid #000; flex:1;">💳 Fechar Conta</button>' +
                             '<button data-id="' + esc(ma.id) + '" onclick="event.stopPropagation(); imprimirAberta(this.getAttribute(\'data-id\'))" title="Imprimir na térmica" style="background:#fff; border:2px solid #000;">🖨️</button>' : '') +
                             (!ma.pessoa && !ma.itens.length ? '<button type="button" onclick="event.stopPropagation(); removerComandaVazia(' + Number(ma.id) + ')" style="background:#fff; border:2px solid #000;">✖ Remover</button>' : '') + (souTeste() ? '<button data-id="' + esc(ma.id) + '" onclick="event.stopPropagation(); apagarAberta(this.getAttribute(\'data-id\'))" style="background:#7f1d1d; color:#fff; border:2px solid #000;">🗑️ Apagar</button>' : '') + '</div>' +
                         '</div>';
@@ -3011,7 +3011,7 @@
         function encerrarTodas() {
             if (!exigirAdmin()) return;
             var abertas = todasMesas().filter(function(m) { return m.status === 'ocupada' && m.itens.length > 0 && !m.vip; });
-            if (abertas.length === 0) { alert('Não há mesas abertas.'); return; }
+            if (abertas.length === 0) { alert('Não há comandas abertas.'); return; }
             if (!confirm('Encerrar ' + abertas.length + ' comanda(s) em aberto, total ' + brl(abertas.reduce(function(a, m) { return a + totalMesaObj(m); }, 0)) + '?')) return;
             fetch(API_URL + '?acao=encerrar_todas')
                 .then(function(res) { return res.json(); })
@@ -3650,7 +3650,7 @@
             if (!exigirAdmin()) return;
             var mesasOcupadas = todasMesas().filter(function(m) { return m.status === 'ocupada' && m.itens.length > 0 && !m.vip && !mesaTeste(m); }); // comandas de teste abertas não bloqueiam
             if (mesasOcupadas.length > 0) {
-                alert("Não é possível finalizar o dia! Ainda existem mesas abertas.\nVá na aba 📋 Abertas e use \"Encerrar todas\" se for o caso.");
+                alert("Não é possível finalizar o dia! Ainda existem comandas abertas.\nVá na aba 📋 Abertas e use \"Encerrar todas\" se for o caso.");
                 return;
             }
             var temTeste = (estado.finalizadas || []).some(function(f) { return f.teste || f.forma === 'Teste'; });
@@ -3692,8 +3692,8 @@
                         renderizar();
                         alert("Dia finalizado!\nTotal de vendas: " + (r.totalTexto || '') +
                             "\nBebidas: " + (r.bebidasTexto || '') + "\nComidas: " + (r.comidasTexto || '') +
-                            "\nMesas que ficaram em aberto: " + (r.emAbertoTexto || '') + " (" + (r.nomesAbertas || 'nenhuma') + ")" +
-                            "\n\nAs mesas voltaram ao início (Mesa 1, Mesa 2, ...).");
+                            "\nComandas que ficaram em aberto: " + (r.emAbertoTexto || '') + " (" + (r.nomesAbertas || 'nenhuma') + ")" +
+                            "\n\nAs comandas voltaram ao início (Comanda 1, Comanda 2, ...).");
                         estado.pessoasNovas = [];
                         sincronizar();
                     } else {
@@ -3895,10 +3895,10 @@
                         : '<div class="painel-lateral" style="justify-content: center; align-items: center; text-align: center;"><p>👆 Clique em "➕ Incluir produtos" em uma comanda para lançar pedidos aqui.</p></div>';
                     main.innerHTML = '<div class="grid-caixa"><div>' +
                         '<div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.75rem; margin-bottom:1rem;">' +
-                            '<h2 style="color:#000;">📋 Mesas abertas: ' + abertasLista.length + ' | ' + brl(totalAbertas) + '</h2>' +
+                            '<h2 style="color:#000;">📋 Comandas abertas: ' + abertasLista.length + ' | ' + brl(totalAbertas) + '</h2>' +
                             '<button onclick="encerrarTodas()" style="background:#f87171; border:2px solid #000;"' + (abertasLista.length === 0 ? ' disabled' : '') + '>🔒 Encerrar todas (senha)</button>' +
                         '</div>' +
-                        (abHtml ? '<div class="grid-cartoes">' + abHtml + '</div>' : '<p style="color:#000; font-weight:bold; padding:2rem; text-align:center;">Nenhuma mesa em aberto.</p>') +
+                        (abHtml ? '<div class="grid-cartoes">' + abHtml + '</div>' : '<p style="color:#000; font-weight:bold; padding:2rem; text-align:center;">Nenhuma comanda em aberto.</p>') +
                         (vipAbHtml ? '<h2 style="color:#000; margin: 1.5rem 0 0.5rem;">⭐ VIP em aberto: ' + vipLista.length + '</h2><p style="color:#000; font-size:0.875rem; font-weight:normal; margin-bottom:0.25rem;">Total: ' + brl(totalVipAb) + '</p><p style="color:#000; font-size:0.8rem; margin-bottom:0.75rem;">Contas mensais: não entram no "Encerrar todas" nem no fechamento do dia.</p><div class="grid-cartoes">' + vipAbHtml + '</div>' : '') +
                     '</div>' + lateralAb + '</div>';
                 } else if (estado.abaAtiva === 'vip') {
