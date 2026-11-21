@@ -1007,7 +1007,7 @@
 
         // ---------- GAME (segredo): em "+ Nova comanda" digite 1337 no número e GAME no nome ----------
         // ---------- atualização automática do aplicativo (iPad): compara a versão do site no servidor e recarrega sozinho ----------
-        var VERSAO_SITE = '20/11-R';
+        var VERSAO_SITE = '20/11-S';
         function atualizarRotuloVersao() {
             var r = document.getElementById('rotulo-versao');
             if (r) r.textContent = 'site v' + VERSAO_SITE + (estado.usuario ? ' · script ' + (estado.versao || '?') : '');
@@ -3046,6 +3046,7 @@
                 '<h3 style="margin-bottom:0.5rem;">Fechar ' + esc(nomeMesa(m)) + '</h3>' + (m.vip ? '<div style="font-size:0.75rem; margin-bottom:0.5rem;">⭐ Conta VIP (mensal): vai para a aba VIP e não entra no caixa do dia.</div>' : '') +
                 '<div style="display:flex; flex-direction:column; gap:0.2rem; margin-bottom:0.5rem;">' + linhas + '</div>' +
                 '<div style="display:flex; justify-content:space-between; font-weight:bold; border-top:1px dashed #000; padding-top:0.4rem;"><span>TOTAL</span><span>' + brl(totalMesaObj(m)) + '</span></div>' +
+                (m.itens.length > 1 && !m.vip ? '<button type="button" onclick="fecharJanelaFechamento(); abrirDivisao(\'' + esc(String(m.id)) + '\');" style="background:#fff; border:2px dashed #000; width:100%; margin-top:0.5rem; font-weight:bold;">➗ Dividir conta em vez de fechar tudo junto</button>' : '') +
                 botoes +
                 '<div style="display:flex; gap:0.5rem; margin-top:1rem; flex-wrap:wrap;">' +
                     '<button type="button" onclick="imprimirFechamento()" style="background:#fff; border:2px solid #000; flex:1;">🖨️ Imprimir comanda</button>' +
@@ -3226,10 +3227,40 @@
         }
         function escolherModoDivisao(modo) { if (estado.divisao) { estado.divisao.modo = modo; desenharDivisao(); } }
         function divisaoNpessoas(v) { if (estado.divisao) { estado.divisao.npessoas = Math.max(1, Math.min(30, Number(v) || 1)); desenharDivisao(); } }
-        function atribuirItemDivisao(linha, nome) {
-            if (!estado.divisao) return;
-            var n = String(nome || '').trim().substring(0, 30);
-            if (n) estado.divisao.atrib[linha] = n; else delete estado.divisao.atrib[linha];
+        // d.atrib[linha] = array de { nome, qtd } — cada linha de pedido pode ser repartida entre várias pessoas (cada pessoa leva uma quantidade inteira do produto)
+        function divisaoAddLinha(linha) {
+            var d = estado.divisao, m = d && acharMesa(d.id);
+            if (!d || !m) return;
+            var it = m.itens.filter(function(x) { return x.linha === linha; })[0];
+            if (!it) return;
+            if (!d.atrib[linha]) d.atrib[linha] = [];
+            var usado = d.atrib[linha].reduce(function(a, e) { return a + (Number(e.qtd) || 0); }, 0);
+            var restante = it.qnt - usado;
+            if (restante <= 0) return;
+            d.atrib[linha].push({ nome: '', qtd: restante });
+            desenharDivisao();
+        }
+        function divisaoRemoverLinha(linha, idx) {
+            var d = estado.divisao;
+            if (!d || !d.atrib[linha]) return;
+            d.atrib[linha].splice(idx, 1);
+            if (!d.atrib[linha].length) delete d.atrib[linha];
+            desenharDivisao();
+        }
+        function divisaoNomeLinha(linha, idx, nome) {
+            var d = estado.divisao;
+            if (!d || !d.atrib[linha] || !d.atrib[linha][idx]) return;
+            d.atrib[linha][idx].nome = String(nome || '').trim().substring(0, 30);
+            desenharDivisao();
+        }
+        function divisaoQtdLinha(linha, idx, v) {
+            var d = estado.divisao, m = d && acharMesa(d.id);
+            if (!d || !m || !d.atrib[linha] || !d.atrib[linha][idx]) return;
+            var it = m.itens.filter(function(x) { return x.linha === linha; })[0];
+            if (!it) return;
+            var outros = d.atrib[linha].reduce(function(a, e, i) { return i === idx ? a : a + (Number(e.qtd) || 0); }, 0);
+            var max = Math.max(1, it.qnt - outros);
+            d.atrib[linha][idx].qtd = Math.max(1, Math.min(max, Math.round(Number(v)) || 1));
             desenharDivisao();
         }
         function divisaoFormaEscolher(fp) { if (estado.divisao) { estado.divisao.formaDiv = fp; estado.divisao.livreDiv = ''; desenharDivisao(); } }
@@ -3261,18 +3292,35 @@
                 if (!m.itens.length) {
                     corpo = '<p style="font-size:0.85rem;">Todos os itens já foram fechados.</p>';
                 } else {
-                    var grupos = {}, semNome = 0;
+                    var grupos = {}, semNome = 0, nomesUnicos = [];
                     m.itens.forEach(function(it) {
-                        var nome = d.atrib[it.linha] || '';
-                        if (!nome) { semNome++; return; }
-                        if (!grupos[nome]) grupos[nome] = { total: 0 };
-                        grupos[nome].total += it.qnt * it.preco;
+                        if (!d.atrib[it.linha]) d.atrib[it.linha] = [{ nome: '', qtd: it.qnt }];
+                        var comNome = 0;
+                        d.atrib[it.linha].forEach(function(e) {
+                            var qt = Number(e.qtd) || 0;
+                            if (!e.nome) return;
+                            comNome += qt;
+                            if (nomesUnicos.indexOf(e.nome) < 0) nomesUnicos.push(e.nome);
+                            if (!grupos[e.nome]) grupos[e.nome] = { total: 0 };
+                            grupos[e.nome].total += qt * it.preco;
+                        });
+                        semNome += it.qnt - comNome;
                     });
-                    var nomesUnicos = []; Object.keys(d.atrib).forEach(function(k) { var v = d.atrib[k]; if (nomesUnicos.indexOf(v) < 0) nomesUnicos.push(v); });
                     var listaItens = m.itens.map(function(it) {
-                        return '<div style="display:flex; justify-content:space-between; align-items:center; gap:0.5rem; padding:0.3rem 0; border-bottom:1px solid #eee;">' +
-                            '<span style="font-size:0.85rem;">' + it.qnt + 'x ' + esc(it.produto) + '<br><small>' + brl(it.qnt * it.preco) + '</small></span>' +
-                            '<input type="text" list="divisao-nomes" value="' + esc(d.atrib[it.linha] || '') + '" placeholder="Nome da pessoa" maxlength="30" oninput="atribuirItemDivisao(' + it.linha + ', this.value)" style="width:9rem; margin:0;">' +
+                        var linhasPessoas = d.atrib[it.linha];
+                        var usado = linhasPessoas.reduce(function(a, e) { return a + (Number(e.qtd) || 0); }, 0);
+                        var restante = it.qnt - usado;
+                        var rowsHtml = linhasPessoas.map(function(e, idx) {
+                            return '<div style="display:flex; gap:0.3rem; align-items:center; margin-top:0.25rem;">' +
+                                '<input type="text" list="divisao-nomes" value="' + esc(e.nome) + '" placeholder="Nome da pessoa" maxlength="30" oninput="divisaoNomeLinha(' + it.linha + ', ' + idx + ', this.value)" style="flex:1; margin:0;">' +
+                                (it.qnt > 1 ? '<input type="number" min="1" max="' + it.qnt + '" value="' + e.qtd + '" oninput="divisaoQtdLinha(' + it.linha + ', ' + idx + ', this.value)" style="width:3.2rem; margin:0; text-align:center;">' : '') +
+                                (linhasPessoas.length > 1 ? '<button type="button" onclick="divisaoRemoverLinha(' + it.linha + ', ' + idx + ')" title="Remover" style="background:#fff; border:2px solid #000; padding:0.3rem 0.5rem; margin:0; min-height:0;">✕</button>' : '') +
+                            '</div>';
+                        }).join('');
+                        return '<div style="padding:0.3rem 0; border-bottom:1px solid #eee;">' +
+                            '<div style="display:flex; justify-content:space-between; font-size:0.85rem;"><span>' + it.qnt + 'x ' + esc(it.produto) + '</span><span>' + brl(it.qnt * it.preco) + '</span></div>' +
+                            rowsHtml +
+                            (it.qnt > 1 && restante > 0 ? '<button type="button" onclick="divisaoAddLinha(' + it.linha + ')" style="background:#fff; border:1px dashed #000; font-size:0.75rem; padding:0.2rem 0.5rem; margin-top:0.25rem;">➕ Dividir ' + restante + ' restante(s) com outra pessoa</button>' : '') +
                         '</div>';
                     }).join('');
                     var listaGrupos = Object.keys(grupos).map(function(nome) {
@@ -3295,9 +3343,9 @@
                         '</div>';
                     }).join('');
                     corpo = '<datalist id="divisao-nomes">' + nomesUnicos.map(function(n) { return '<option value="' + esc(n) + '">'; }).join('') + '</datalist>' +
-                        '<p style="font-size:0.8rem; margin-bottom:0.25rem;">Digite o nome de quem consumiu cada item:</p>' +
+                        '<p style="font-size:0.8rem; margin-bottom:0.25rem;">Digite o nome de quem consumiu cada item (dá para dividir a quantidade entre mais de uma pessoa):</p>' +
                         listaItens +
-                        (semNome ? '<p style="font-size:0.75rem; color:#b91c1c; margin-top:0.4rem;">' + semNome + ' item(ns) ainda sem nome.</p>' : '') +
+                        (semNome ? '<p style="font-size:0.75rem; color:#b91c1c; margin-top:0.4rem;">' + semNome + ' unidade(s) ainda sem nome.</p>' : '') +
                         listaGrupos;
                 }
                 corpo += '<button type="button" onclick="escolherModoDivisao(null)" style="background:#fff; border:2px solid #000; width:100%; margin-top:0.75rem;">← Voltar</button>';
@@ -3313,16 +3361,30 @@
             if (!m) { fecharJanelaDivisao(); return; }
             var livre = (estado.usuario && estado.usuario.admin) ? String(d.livreDiv || '').replace(/\s+/g, ' ').trim().substring(0, 60) : '';
             if (!d.formaDiv && !livre) { alert('Escolha a forma de pagamento.'); return; }
-            var itensNome = m.itens.filter(function(it) { return d.atrib[it.linha] === nome; });
-            var pedidos = itensNome.map(function(it) { return estado.pedidosGlobais[it.idItem]; }).filter(function(p) { return p && p.linha; });
+            var alvo = []; // { it, idx, qtd }
+            m.itens.forEach(function(it) {
+                (d.atrib[it.linha] || []).forEach(function(e, idx) {
+                    if (e.nome === nome && Number(e.qtd) > 0) alvo.push({ it: it, idx: idx, qtd: Number(e.qtd) });
+                });
+            });
+            var pedidos = alvo.map(function(a) { return { p: estado.pedidosGlobais[a.it.idItem], a: a }; }).filter(function(x) { return x.p && x.p.linha; });
             if (!pedidos.length) { alert('Aguarde alguns segundos (pedido ainda sendo gravado) e tente de novo.'); return; }
-            var linhas = pedidos.map(function(p) { return p.linha; });
             var idAlvo = m.pessoa ? m.id : (m.idExibicao || m.id);
             if (!estado.cancelPend) estado.cancelPend = [];
-            var regs = pedidos.map(function(p) { return { sig: sigItem(p), q: Number(p.qnt), qo: Number(p.qnt), t: Date.now() }; });
+            var regs = pedidos.map(function(x) { return { sig: sigItem(x.p), q: x.a.qtd, qo: Number(x.p.qnt), t: Date.now() }; });
             estado.cancelPend = estado.cancelPend.concat(regs);
             estado.pedidosGlobais = aplicarFechando(estado.pedidosGlobais);
-            itensNome.forEach(function(it) { delete d.atrib[it.linha]; });
+            var itensEnvio = pedidos.map(function(x) { return { linha: x.p.linha, qtd: x.a.qtd }; });
+            var porLinhaRemocao = {};
+            pedidos.forEach(function(x) {
+                var ln = x.a.it.linha;
+                if (!porLinhaRemocao[ln]) porLinhaRemocao[ln] = [];
+                porLinhaRemocao[ln].push(x.a.idx);
+            });
+            Object.keys(porLinhaRemocao).forEach(function(ln) {
+                porLinhaRemocao[ln].sort(function(a, b) { return b - a; }).forEach(function(idx) { d.atrib[ln].splice(idx, 1); });
+                if (!d.atrib[ln].length) delete d.atrib[ln];
+            });
             d.fechandoNome = ''; d.formaDiv = ''; d.livreDiv = '';
             processarPedidos();
             renderizar();
@@ -3332,7 +3394,7 @@
                 if (txt) alert(txt);
                 sincronizar();
             };
-            fetch(API_URL + '?acao=fechar_parcial&mesa=' + encodeURIComponent(idAlvo) + '&linhas=' + encodeURIComponent(linhas.join(',')) +
+            fetch(API_URL + '?acao=fechar_parcial&mesa=' + encodeURIComponent(idAlvo) + '&itens=' + encodeURIComponent(JSON.stringify(itensEnvio)) +
                   '&nome=' + encodeURIComponent(nome) + '&forma=' + encodeURIComponent(livre ? '' : d.formaDiv) + (livre ? '&forma_livre=' + encodeURIComponent(livre) : ''))
                 .then(function(res) { return res.json(); })
                 .then(function(r) {
