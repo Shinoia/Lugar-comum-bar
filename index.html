@@ -1007,7 +1007,7 @@
 
         // ---------- GAME (segredo): em "+ Nova comanda" digite 1337 no número e GAME no nome ----------
         // ---------- atualização automática do aplicativo (iPad): compara a versão do site no servidor e recarrega sozinho ----------
-        var VERSAO_SITE = '20/11-V';
+        var VERSAO_SITE = '20/11-W';
         function atualizarRotuloVersao() {
             var r = document.getElementById('rotulo-versao');
             if (r) r.textContent = 'site v' + VERSAO_SITE + (estado.usuario ? ' · script ' + (estado.versao || '?') : '');
@@ -3317,10 +3317,20 @@
                         var usado = linhasPessoas.reduce(function(a, e) { return a + (Number(e.qtd) || 0); }, 0);
                         var restante = it.qnt - usado;
                         var rowsHtml = linhasPessoas.map(function(e, idx) {
-                            return '<div style="display:flex; gap:0.3rem; align-items:center; margin-top:0.25rem;">' +
-                                '<input type="text" data-foco="nome-' + it.linha + '-' + idx + '" list="divisao-nomes" value="' + esc(e.nome) + '" placeholder="Nome da pessoa" maxlength="30" oninput="divisaoNomeLinha(' + it.linha + ', ' + idx + ', this.value)" style="flex:1; margin:0;">' +
+                            var fcampo = 'nome-' + it.linha + '-' + idx, valDigitado = String(e.nome || '').trim(), sugestoes = [];
+                            if (foco === fcampo && valDigitado) {
+                                var vdLower = valDigitado.toLowerCase();
+                                sugestoes = nomesUnicos.filter(function(n) { return n.toLowerCase().indexOf(vdLower) === 0 && n.toLowerCase() !== vdLower; }).slice(0, 8);
+                            }
+                            return '<div style="position:relative; margin-top:0.25rem;">' +
+                                '<div style="display:flex; gap:0.3rem; align-items:center;">' +
+                                '<input type="text" data-foco="' + fcampo + '" autocomplete="off" value="' + esc(e.nome) + '" placeholder="Nome da pessoa" maxlength="30" oninput="divisaoNomeLinha(' + it.linha + ', ' + idx + ', this.value)" style="flex:1; margin:0;">' +
                                 (it.qnt > 1 ? '<input type="number" data-foco="qtd-' + it.linha + '-' + idx + '" min="1" max="' + it.qnt + '" value="' + e.qtd + '" oninput="divisaoQtdLinha(' + it.linha + ', ' + idx + ', this.value)" style="width:3.2rem; margin:0; text-align:center;">' : '') +
                                 (linhasPessoas.length > 1 ? '<button type="button" onclick="divisaoRemoverLinha(' + it.linha + ', ' + idx + ')" title="Remover" style="background:#fff; border:2px solid #000; padding:0.3rem 0.5rem; margin:0; min-height:0;">✕</button>' : '') +
+                                '</div>' +
+                                (sugestoes.length ? '<div style="position:absolute; left:0; right:0; top:100%; z-index:70; background:#fff; border:2px solid #000; border-radius:0.4rem; margin-top:2px; max-height:150px; overflow-y:auto;">' +
+                                    sugestoes.map(function(n) { return '<div onmousedown="event.preventDefault(); divisaoNomeLinha(' + it.linha + ', ' + idx + ', \'' + esc(n).replace(/'/g, "\\'") + '\')" style="padding:0.4rem 0.6rem; border-bottom:1px solid #eee; cursor:pointer;">' + esc(n) + '</div>'; }).join('') +
+                                '</div>' : '') +
                             '</div>';
                         }).join('');
                         return '<div style="padding:0.3rem 0; border-bottom:1px solid #eee;">' +
@@ -3348,8 +3358,7 @@
                             (souEu ? pagamento : '<button type="button" onclick="divisaoAbrirPagamento(\'' + nomeJs + '\')" style="background:#fff; border:2px solid #000; width:100%; margin-top:0.4rem;">💳 Fechar parte de ' + esc(nome) + '</button>') +
                         '</div>';
                     }).join('');
-                    corpo = '<datalist id="divisao-nomes">' + nomesUnicos.map(function(n) { return '<option value="' + esc(n) + '">'; }).join('') + '</datalist>' +
-                        '<p style="font-size:0.8rem; margin-bottom:0.25rem;">Digite o nome de quem consumiu cada item (dá para dividir a quantidade entre mais de uma pessoa):</p>' +
+                    corpo = '<p style="font-size:0.8rem; margin-bottom:0.25rem;">Digite o nome de quem consumiu cada item (dá para dividir a quantidade entre mais de uma pessoa):</p>' +
                         listaItens +
                         (semNome ? '<p style="font-size:0.75rem; color:#b91c1c; margin-top:0.4rem;">' + semNome + ' unidade(s) ainda sem nome.</p>' : '') +
                         listaGrupos;
