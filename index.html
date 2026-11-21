@@ -172,6 +172,8 @@
                 return res.clone().json().then(function(j) {
                     if (j && j.negado) {
                         CHAVE = ''; USUARIO = ''; guardarSessao('', '');
+                        estado.usuario = null; // a sessão caiu (senha errada, bloqueio, off ou desligado): nunca deixa o sistema aberto sem login válido
+                        try { atualizarUsuario(); } catch (eAU) {}
                         pedirChave(j.off ? 'Seu acesso está desativado (off).' : ((j.bloqueado || j.desbloqueado) ? j.error : 'Usuário ou senha incorretos.'));
                     }
                     return res;
@@ -179,7 +181,11 @@
             });
         };
         function pedirChave(aviso) {
-            if (document.getElementById('janela-chave')) return;
+            var existente = document.getElementById('janela-chave');
+            if (existente) {
+                if (!aviso) return; // já está mostrando a tela de login (sem erro novo pra avisar): não mexe, evita piscar/perder o foco
+                existente.parentNode.removeChild(existente); // tem um aviso novo (ex.: senha errada): refaz a tela com a mensagem certa
+            }
             var el = document.createElement('div');
             el.id = 'janela-chave';
             el.style.cssText = 'position:fixed; top:0; left:0; right:0; bottom:0; width:100%; height:100%; background:#b82013; display:flex; flex-direction:column; align-items:center; justify-content:center; z-index:100; padding:1rem;';
@@ -202,12 +208,23 @@
             var u = String((document.getElementById('input-usuario') || {}).value || '').trim();
             var v = String((document.getElementById('input-chave') || {}).value || '').trim();
             if (!u || !v) return;
+            var btn = document.querySelector('#janela-chave button');
+            if (btn) { btn.disabled = true; btn.textContent = 'Verificando...'; }
             CHAVE = v; USUARIO = u;
-            guardarSessao(u, v);
-            var el = document.getElementById('janela-chave');
-            if (el && el.parentNode) el.parentNode.removeChild(el);
-            document.body.classList.remove('bloqueado');
-            sincronizar();
+            guardarSessao(u, v); // precisa gravar já (senão o próprio fetch acha que "virou o dia" e cancela o pedido antes de mandar)
+            // só sai da tela de login e mostra o sistema DEPOIS que o servidor confirmar a senha — nunca antes
+            sincronizar().then(function() {
+                if (estado.usuario) {
+                    var el = document.getElementById('janela-chave');
+                    if (el && el.parentNode) el.parentNode.removeChild(el);
+                    document.body.classList.remove('bloqueado');
+                    return;
+                }
+                // senha errada/bloqueado/off/desligado: o próprio fetch já trocou a tela de login pelo aviso certo.
+                // Se foi só falha de rede (sem resposta), a tela continua igual: só libera o botão de novo.
+                var btn2 = document.querySelector('#janela-chave button');
+                if (btn2) { btn2.disabled = false; btn2.textContent = 'Entrar'; }
+            });
         }
         function sair() {
             if (!confirm('Sair do sistema neste aparelho?')) return;
@@ -642,11 +659,11 @@
             renderizar();
         }
         function sincronizar() {
-            if (ESTACAO) return;
+            if (ESTACAO) return Promise.resolve();
             capturarValoresFormulario();
             var meuSeq = (estado.seqReq = (estado.seqReq || 0) + 1);
             estado.sincT = Date.now();
-            fetch(API_URL)
+            return fetch(API_URL)
                 .then(function(res) { return res.json(); })
                 .then(function(data) {
                     estado.sincT = 0;
@@ -1053,7 +1070,7 @@
 
         // ---------- GAME (segredo): em "+ Nova comanda" digite 1337 no número e GAME no nome ----------
         // ---------- atualização automática do aplicativo (iPad): compara a versão do site no servidor e recarrega sozinho ----------
-        var VERSAO_SITE = '21/11-N';
+        var VERSAO_SITE = '21/11-O';
         function atualizarRotuloVersao() {
             var r = document.getElementById('rotulo-versao');
             if (r) r.textContent = 'site v' + VERSAO_SITE + (estado.usuario ? ' · script ' + (estado.versao || '?') : '');
