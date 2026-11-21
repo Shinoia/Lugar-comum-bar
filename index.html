@@ -364,6 +364,27 @@
             return 'mesa';
         }
         function todasMesas() { return estado.mesas.concat(estado.pessoas); }
+        // ordenação por atividade recente: comanda nova (sem pedido ainda) fica no topo;
+        // entre as que já têm pedido, quem recebeu o pedido mais recente (maior linha na planilha) fica mais acima
+        function chaveRecencia(m) {
+            if (!m || !m.itens || !m.itens.length) return Infinity;
+            var mx = -1;
+            for (var i = 0; i < m.itens.length; i++) {
+                var l = Number(m.itens[i].linha);
+                if (!isNaN(l) && l > mx) mx = l;
+            }
+            return mx < 0 ? Infinity : mx;
+        }
+        // cópia dos itens da comanda ordenada do mais novo pro mais antigo, só para exibição na tela (não mexe na ordem usada no recibo/fechamento)
+        function itensOrdenados(m) {
+            if (!m || !m.itens) return [];
+            return m.itens.slice().sort(function(a, b) {
+                var la = Number(a.linha), lb = Number(b.linha);
+                if (isNaN(la)) la = -1;
+                if (isNaN(lb)) lb = -1;
+                return lb - la;
+            });
+        }
         function acharMesa(id) { return todasMesas().find(function(m) { return String(m.id) === String(id); }); }
         // nome para mostrar na tela
         function nomeMesa(m) {
@@ -544,6 +565,9 @@
                     }
                 }
 
+                // comanda nova ou que acabou de receber pedido sobe para o topo (mesma ordem em Caixa, Abertas e VIP)
+                estado.mesas.sort(function(a, b) { return chaveRecencia(b) - chaveRecencia(a); });
+
                 // pessoas: as que têm pedidos em aberto + as cadastradas que ainda não pediram
                 estado.pessoas = [];
                 for (var chv2 in pessoasMapa) estado.pessoas.push(pessoasMapa[chv2]);
@@ -552,7 +576,7 @@
                         estado.pessoas.push({ id: chave, pessoa: true, vip: ehVip(chave), nome: ehVip(chave) ? chave : chave.substring(PREFIXO_PESSOA.length), status: 'ocupada', itens: [], idExibicao: chave, contadorFehamentos: 0, abertaEm: '' });
                     }
                 });
-                estado.pessoas.sort(function(a, b) { return a.nome.localeCompare(b.nome, 'pt'); });
+                estado.pessoas.sort(function(a, b) { return chaveRecencia(b) - chaveRecencia(a); });
                 finLista.sort(function(a, b) { return ordemData(b.tchau).localeCompare(ordemData(a.tchau)); });
                 // comandas que acabei de fechar aparecem na hora em Finalizadas, até a planilha confirmar (aí vale a versão dela)
                 if (estado.finPend && estado.finPend.length) {
@@ -1028,7 +1052,7 @@
 
         // ---------- GAME (segredo): em "+ Nova comanda" digite 1337 no número e GAME no nome ----------
         // ---------- atualização automática do aplicativo (iPad): compara a versão do site no servidor e recarrega sozinho ----------
-        var VERSAO_SITE = '21/11-L';
+        var VERSAO_SITE = '21/11-M';
         function atualizarRotuloVersao() {
             var r = document.getElementById('rotulo-versao');
             if (r) r.textContent = 'site v' + VERSAO_SITE + (estado.usuario ? ' · script ' + (estado.versao || '?') : '');
@@ -2800,8 +2824,9 @@
         }
         function htmlCartaoAberto(ma) {
             var linhasAb = '';
-                        for (var li = 0; li < ma.itens.length; li++) {
-                            var ia = ma.itens[li];
+                        var itensAbOrd = itensOrdenados(ma); // pedido mais novo sempre em cima, mesmo com itens já entregues
+                        for (var li = 0; li < itensAbOrd.length; li++) {
+                            var ia = itensAbOrd[li];
                             linhasAb += '<div style="display:flex; justify-content:space-between; gap:0.5rem; font-size:0.85rem;"><span>' + ia.qnt + 'x ' + esc(ia.produto) + (ia.obs ? ' <small>(📝 ' + esc(ia.obs) + ')</small>' : '') + '</span>' +
                                 '<span style="display:flex; gap:0.3rem; align-items:center; flex-shrink:0;"><span class="badge" style="background:' + corStatus(ia.statusPreparo || 'pendente') + ';">' + String(ia.statusPreparo || 'pendente').toUpperCase() + '</span>' +
                                 (ia.statusPreparo === 'entregue'
@@ -3723,8 +3748,9 @@
             if (mesaSel.itens.length === 0) {
                 listaHtml = '<p style="text-align: center; padding: 1rem;">Nenhum item lançado.</p>';
             } else {
-                for (var j = 0; j < mesaSel.itens.length; j++) {
-                    var item = mesaSel.itens[j];
+                var itensPainelOrd = itensOrdenados(mesaSel); // pedido mais novo sempre em cima, mesmo com itens já entregues
+                for (var j = 0; j < itensPainelOrd.length; j++) {
+                    var item = itensPainelOrd[j];
                     var stPreparo = item.statusPreparo || 'pendente';
                     var subtotal = item.qnt * item.preco;
                     valorTotalComanda += subtotal;
