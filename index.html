@@ -1007,7 +1007,7 @@
 
         // ---------- GAME (segredo): em "+ Nova comanda" digite 1337 no número e GAME no nome ----------
         // ---------- atualização automática do aplicativo (iPad): compara a versão do site no servidor e recarrega sozinho ----------
-        var VERSAO_SITE = '20/11-U';
+        var VERSAO_SITE = '20/11-V';
         function atualizarRotuloVersao() {
             var r = document.getElementById('rotulo-versao');
             if (r) r.textContent = 'site v' + VERSAO_SITE + (estado.usuario ? ' · script ' + (estado.versao || '?') : '');
@@ -3287,11 +3287,10 @@
                     '</div>';
             } else if (d.modo === 'pessoas') {
                 var total = totalMesaObj(m), n = d.npessoas, cada = n > 0 ? Math.floor(total * 100 / n) / 100 : 0, sobra = Math.round((total - cada * n) * 100) / 100;
-                var partes = '';
-                for (var i = 1; i <= n; i++) partes += '<div style="display:flex; justify-content:space-between; font-size:0.9rem; padding:0.25rem 0;"><span>Pessoa ' + i + '</span><span><b>' + brl(cada + (i === n ? sobra : 0)) + '</b></span></div>';
+                var valorLinha = (sobra > 0) ? ('<b>' + brl(cada) + '</b> (a última pessoa paga <b>' + brl(cada + sobra) + '</b>)') : ('<b>' + brl(cada) + '</b>');
                 corpo = '<label style="font-size:0.85rem;">Número de pessoas</label>' +
                     '<input type="number" data-foco="npessoas" min="1" max="30" value="' + n + '" oninput="divisaoNpessoas(this.value)" style="width:100%; margin:0.25rem 0 0.75rem;">' +
-                    '<div style="border-top:1px dashed #000; padding-top:0.5rem;">' + partes + '</div>' +
+                    '<div style="border-top:1px dashed #000; padding-top:0.5rem; display:flex; justify-content:space-between; font-size:0.95rem;"><span>Valor por pessoa</span><span>' + valorLinha + '</span></div>' +
                     '<p style="font-size:0.75rem; margin-top:0.5rem;">Isso é só para referência (a divisão em si não muda nada no sistema). A comanda continua inteira; feche normalmente em "Fechar Conta" quando todos já tiverem pago a parte deles.</p>' +
                     '<button type="button" onclick="escolherModoDivisao(null)" style="background:#fff; border:2px solid #000; width:100%; margin-top:0.75rem;">← Voltar</button>';
             } else { // 'produto'
