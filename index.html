@@ -1028,7 +1028,7 @@
 
         // ---------- GAME (segredo): em "+ Nova comanda" digite 1337 no número e GAME no nome ----------
         // ---------- atualização automática do aplicativo (iPad): compara a versão do site no servidor e recarrega sozinho ----------
-        var VERSAO_SITE = '21/11-K';
+        var VERSAO_SITE = '21/11-L';
         function atualizarRotuloVersao() {
             var r = document.getElementById('rotulo-versao');
             if (r) r.textContent = 'site v' + VERSAO_SITE + (estado.usuario ? ' · script ' + (estado.versao || '?') : '');
@@ -2812,7 +2812,7 @@
                         var cartaoAb = '<div class="mesa-card ocupada' + (mesaTemPronto(ma) ? ' piscando' : '') + (mesaTeste(ma) ? ' teste' : '') + (comandaVencida(ma) ? ' comanda-vencida' : '') + (String(ma.id) === String(estado.mesaSelecionadaId) ? ' selecionada' : '') + ' cartao-aberto" data-id="' + esc(ma.id) + '" onclick="selecionarMesa(this.getAttribute(\'data-id\'))">' +
                             '<div style="display:flex; justify-content:space-between;"><div><strong>' + iconeCartao(ma) + esc(tituloCartao(ma)) + '</strong>' + clienteDaMesaAberta(ma) + '</div>' + (mesaTeste(ma) ? etiquetaTeste() : '') + (ma.vip ? '<span style="font-size:0.875rem; font-weight:normal;">' + brl(totalMesaObj(ma)) + '</span>' : '<strong>' + brl(totalMesaObj(ma)) + '</strong>') + '</div>' +
                             (ma.abertaEm ? '<small>Aberta em ' + esc(ma.abertaEm) + '</small>' : '') +
-                            (comandaVencida(ma) ? '<div style="width:100%; box-sizing:border-box; text-align:center; font-size:1.8rem; line-height:1.1; letter-spacing:0.01em; padding:0.25rem 0;">⚠️ ATENÇÃO +12h</div>' : '') +
+                            (comandaVencida(ma) ? '<div style="width:100%; box-sizing:border-box; text-align:center; font-size:1.4rem; line-height:1.1; letter-spacing:0.01em; padding:0.25rem 0; white-space:nowrap;">⚠️ ATENÇÃO +12h</div>' : '') +
                             '<div style="display:flex; flex-direction:column; gap:0.25rem;">' + linhasAb + '</div>' +
                             '<div style="display:flex; gap:0.4rem; flex-wrap:wrap;"><button data-id="' + esc(ma.id) + '" onclick="event.stopPropagation(); selecionarMesa(this.getAttribute(\'data-id\'))" style="background:#fff; border:2px solid #000; flex:1;">➕ Incluir produtos</button>' +
                             (ma.itens.length ? '<button data-id="' + esc(ma.id) + '" onclick="event.stopPropagation(); fecharMesa(this.getAttribute(\'data-id\'))" style="background:#f87171; border:2px solid #000; flex:1;">💳 Fechar Conta</button>' +
