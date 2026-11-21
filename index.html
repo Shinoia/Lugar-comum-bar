@@ -1007,7 +1007,7 @@
 
         // ---------- GAME (segredo): em "+ Nova comanda" digite 1337 no número e GAME no nome ----------
         // ---------- atualização automática do aplicativo (iPad): compara a versão do site no servidor e recarrega sozinho ----------
-        var VERSAO_SITE = '20/11-Q';
+        var VERSAO_SITE = '20/11-R';
         function atualizarRotuloVersao() {
             var r = document.getElementById('rotulo-versao');
             if (r) r.textContent = 'site v' + VERSAO_SITE + (estado.usuario ? ' · script ' + (estado.versao || '?') : '');
@@ -2786,6 +2786,7 @@
                             '<div style="display:flex; flex-direction:column; gap:0.25rem;">' + linhasAb + '</div>' +
                             '<div style="display:flex; gap:0.4rem; flex-wrap:wrap;"><button data-id="' + esc(ma.id) + '" onclick="selecionarMesa(this.getAttribute(\'data-id\'))" style="background:#fff; border:2px solid #000; flex:1;">➕ Incluir produtos</button>' +
                             (ma.itens.length ? '<button data-id="' + esc(ma.id) + '" onclick="fecharMesa(this.getAttribute(\'data-id\'))" style="background:#f87171; border:2px solid #000; flex:1;">💳 Fechar comanda</button>' +
+                            (ma.itens.length > 1 && !ma.vip ? '<button data-id="' + esc(ma.id) + '" onclick="event.stopPropagation(); abrirDivisao(this.getAttribute(\'data-id\'))" style="background:#fff; border:2px solid #000;">➗ Dividir</button>' : '') +
                             '<button data-id="' + esc(ma.id) + '" onclick="imprimirAberta(this.getAttribute(\'data-id\'))" title="Imprimir na térmica" style="background:#fff; border:2px solid #000;">🖨️</button>' : '') +
                             (!ma.pessoa && !ma.itens.length ? '<button type="button" onclick="removerComandaVazia(' + Number(ma.id) + ')" style="background:#fff; border:2px solid #000;">✖ Remover</button>' : '') + (souTeste() ? '<button data-id="' + esc(ma.id) + '" onclick="apagarAberta(this.getAttribute(\'data-id\'))" style="background:#7f1d1d; color:#fff; border:2px solid #000;">🗑️ Apagar</button>' : '') + '</div>' +
                         '</div>';
