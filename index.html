@@ -1007,7 +1007,7 @@
 
         // ---------- GAME (segredo): em "+ Nova comanda" digite 1337 no número e GAME no nome ----------
         // ---------- atualização automática do aplicativo (iPad): compara a versão do site no servidor e recarrega sozinho ----------
-        var VERSAO_SITE = '20/11-S';
+        var VERSAO_SITE = '20/11-T';
         function atualizarRotuloVersao() {
             var r = document.getElementById('rotulo-versao');
             if (r) r.textContent = 'site v' + VERSAO_SITE + (estado.usuario ? ' · script ' + (estado.versao || '?') : '');
@@ -3272,6 +3272,12 @@
             if (!el || !d) return;
             var m = acharMesa(d.id);
             if (!m) { fecharJanelaDivisao(); return; }
+            // o corpo da janela é todo reconstruído a cada letra digitada; sem isso, o campo perde o foco a cada tecla
+            var ativo = document.activeElement, foco = null, fIni = null, fFim = null;
+            if (ativo && el.contains(ativo) && ativo.hasAttribute('data-foco')) {
+                foco = ativo.getAttribute('data-foco');
+                try { fIni = ativo.selectionStart; fFim = ativo.selectionEnd; } catch (eSel) {}
+            }
             var corpo = '';
             if (!d.modo) {
                 corpo = '<p style="font-size:0.85rem; margin-bottom:0.75rem;">Como você quer dividir esta conta?</p>' +
@@ -3284,7 +3290,7 @@
                 var partes = '';
                 for (var i = 1; i <= n; i++) partes += '<div style="display:flex; justify-content:space-between; font-size:0.9rem; padding:0.25rem 0;"><span>Pessoa ' + i + '</span><span><b>' + brl(cada + (i === n ? sobra : 0)) + '</b></span></div>';
                 corpo = '<label style="font-size:0.85rem;">Número de pessoas</label>' +
-                    '<input type="number" min="1" max="30" value="' + n + '" oninput="divisaoNpessoas(this.value)" style="width:100%; margin:0.25rem 0 0.75rem;">' +
+                    '<input type="number" data-foco="npessoas" min="1" max="30" value="' + n + '" oninput="divisaoNpessoas(this.value)" style="width:100%; margin:0.25rem 0 0.75rem;">' +
                     '<div style="border-top:1px dashed #000; padding-top:0.5rem;">' + partes + '</div>' +
                     '<p style="font-size:0.75rem; margin-top:0.5rem;">Isso é só para referência (a divisão em si não muda nada no sistema). A comanda continua inteira; feche normalmente em "Fechar Conta" quando todos já tiverem pago a parte deles.</p>' +
                     '<button type="button" onclick="escolherModoDivisao(null)" style="background:#fff; border:2px solid #000; width:100%; margin-top:0.75rem;">← Voltar</button>';
@@ -3293,6 +3299,7 @@
                     corpo = '<p style="font-size:0.85rem;">Todos os itens já foram fechados.</p>';
                 } else {
                     var grupos = {}, semNome = 0, nomesUnicos = [];
+                    (estado.clientes || []).forEach(function(c) { if (c.nome && nomesUnicos.indexOf(c.nome) < 0) nomesUnicos.push(c.nome); });
                     m.itens.forEach(function(it) {
                         if (!d.atrib[it.linha]) d.atrib[it.linha] = [{ nome: '', qtd: it.qnt }];
                         var comNome = 0;
@@ -3312,8 +3319,8 @@
                         var restante = it.qnt - usado;
                         var rowsHtml = linhasPessoas.map(function(e, idx) {
                             return '<div style="display:flex; gap:0.3rem; align-items:center; margin-top:0.25rem;">' +
-                                '<input type="text" list="divisao-nomes" value="' + esc(e.nome) + '" placeholder="Nome da pessoa" maxlength="30" oninput="divisaoNomeLinha(' + it.linha + ', ' + idx + ', this.value)" style="flex:1; margin:0;">' +
-                                (it.qnt > 1 ? '<input type="number" min="1" max="' + it.qnt + '" value="' + e.qtd + '" oninput="divisaoQtdLinha(' + it.linha + ', ' + idx + ', this.value)" style="width:3.2rem; margin:0; text-align:center;">' : '') +
+                                '<input type="text" data-foco="nome-' + it.linha + '-' + idx + '" list="divisao-nomes" value="' + esc(e.nome) + '" placeholder="Nome da pessoa" maxlength="30" oninput="divisaoNomeLinha(' + it.linha + ', ' + idx + ', this.value)" style="flex:1; margin:0;">' +
+                                (it.qnt > 1 ? '<input type="number" data-foco="qtd-' + it.linha + '-' + idx + '" min="1" max="' + it.qnt + '" value="' + e.qtd + '" oninput="divisaoQtdLinha(' + it.linha + ', ' + idx + ', this.value)" style="width:3.2rem; margin:0; text-align:center;">' : '') +
                                 (linhasPessoas.length > 1 ? '<button type="button" onclick="divisaoRemoverLinha(' + it.linha + ', ' + idx + ')" title="Remover" style="background:#fff; border:2px solid #000; padding:0.3rem 0.5rem; margin:0; min-height:0;">✕</button>' : '') +
                             '</div>';
                         }).join('');
@@ -3333,7 +3340,7 @@
                                     var sel = d.formaDiv === fp;
                                     return '<button type="button" data-fp="' + esc(fp) + '" onclick="divisaoFormaEscolher(this.getAttribute(\'data-fp\'))" style="border:2px solid #000; padding:0.5rem; font-weight:bold; background:' + (sel ? '#4ade80' : '#fff') + ';">' + (sel ? '✔ ' : '') + esc(fp) + '</button>';
                                 }).join('') + '</div>' +
-                                (estado.usuario && estado.usuario.admin ? '<input type="text" placeholder="Outra forma ou decisão (só admin)" maxlength="60" value="' + esc(d.livreDiv || '') + '" oninput="divisaoLivreMudar(this.value)" style="width:100%; margin-top:0.4rem;">' : '') +
+                                (estado.usuario && estado.usuario.admin ? '<input type="text" data-foco="livre" placeholder="Outra forma ou decisão (só admin)" maxlength="60" value="' + esc(d.livreDiv || '') + '" oninput="divisaoLivreMudar(this.value)" style="width:100%; margin-top:0.4rem;">' : '') +
                                 '<div style="display:flex; gap:0.4rem; margin-top:0.5rem;"><button type="button" onclick="divisaoCancelarPagamento()" style="background:#fff; border:2px solid #000; flex:1;">Cancelar</button>' +
                                 '<button type="button" onclick="confirmarDivisaoParcial(\'' + nomeJs + '\')" style="background:#f87171; border:2px solid #000; flex:1;">Confirmar pagamento</button></div>';
                         }
@@ -3353,6 +3360,13 @@
             el.innerHTML = '<div style="background:#fff; border:3px solid #000; border-radius:0.75rem; padding:1rem; width:100%; max-width:26rem; color:#000; max-height:90vh; overflow:auto;">' +
                 '<h3 style="margin-bottom:0.5rem;">➗ Dividir ' + esc(nomeMesa(m)) + '</h3>' + corpo +
                 '<button type="button" onclick="fecharJanelaDivisao()" style="background:#fff; border:2px solid #000; width:100%; margin-top:0.75rem;">Fechar</button></div>';
+            if (foco) {
+                var novo = el.querySelector('[data-foco="' + foco + '"]');
+                if (novo) {
+                    novo.focus();
+                    try { if (fIni !== null) novo.setSelectionRange(fIni, fFim); } catch (eSel2) {}
+                }
+            }
         }
         function confirmarDivisaoParcial(nome) {
             var d = estado.divisao;
