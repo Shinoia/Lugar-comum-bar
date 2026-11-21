@@ -1007,7 +1007,7 @@
 
         // ---------- GAME (segredo): em "+ Nova comanda" digite 1337 no número e GAME no nome ----------
         // ---------- atualização automática do aplicativo (iPad): compara a versão do site no servidor e recarrega sozinho ----------
-        var VERSAO_SITE = '20/11-T';
+        var VERSAO_SITE = '20/11-U';
         function atualizarRotuloVersao() {
             var r = document.getElementById('rotulo-versao');
             if (r) r.textContent = 'site v' + VERSAO_SITE + (estado.usuario ? ' · script ' + (estado.versao || '?') : '');
@@ -2786,7 +2786,7 @@
                             '<div style="display:flex; flex-direction:column; gap:0.25rem;">' + linhasAb + '</div>' +
                             '<div style="display:flex; gap:0.4rem; flex-wrap:wrap;"><button data-id="' + esc(ma.id) + '" onclick="selecionarMesa(this.getAttribute(\'data-id\'))" style="background:#fff; border:2px solid #000; flex:1;">➕ Incluir produtos</button>' +
                             (ma.itens.length ? '<button data-id="' + esc(ma.id) + '" onclick="fecharMesa(this.getAttribute(\'data-id\'))" style="background:#f87171; border:2px solid #000; flex:1;">💳 Fechar comanda</button>' +
-                            (ma.itens.length > 1 && !ma.vip ? '<button data-id="' + esc(ma.id) + '" onclick="event.stopPropagation(); abrirDivisao(this.getAttribute(\'data-id\'))" style="background:#fff; border:2px solid #000;">➗ Dividir</button>' : '') +
+                            (ma.itens.length > 0 && !ma.vip ? '<button data-id="' + esc(ma.id) + '" onclick="event.stopPropagation(); abrirDivisao(this.getAttribute(\'data-id\'))" style="background:#fff; border:2px solid #000;">➗ Dividir</button>' : '') +
                             '<button data-id="' + esc(ma.id) + '" onclick="imprimirAberta(this.getAttribute(\'data-id\'))" title="Imprimir na térmica" style="background:#fff; border:2px solid #000;">🖨️</button>' : '') +
                             (!ma.pessoa && !ma.itens.length ? '<button type="button" onclick="removerComandaVazia(' + Number(ma.id) + ')" style="background:#fff; border:2px solid #000;">✖ Remover</button>' : '') + (souTeste() ? '<button data-id="' + esc(ma.id) + '" onclick="apagarAberta(this.getAttribute(\'data-id\'))" style="background:#7f1d1d; color:#fff; border:2px solid #000;">🗑️ Apagar</button>' : '') + '</div>' +
                         '</div>';
@@ -3046,7 +3046,7 @@
                 '<h3 style="margin-bottom:0.5rem;">Fechar ' + esc(nomeMesa(m)) + '</h3>' + (m.vip ? '<div style="font-size:0.75rem; margin-bottom:0.5rem;">⭐ Conta VIP (mensal): vai para a aba VIP e não entra no caixa do dia.</div>' : '') +
                 '<div style="display:flex; flex-direction:column; gap:0.2rem; margin-bottom:0.5rem;">' + linhas + '</div>' +
                 '<div style="display:flex; justify-content:space-between; font-weight:bold; border-top:1px dashed #000; padding-top:0.4rem;"><span>TOTAL</span><span>' + brl(totalMesaObj(m)) + '</span></div>' +
-                (m.itens.length > 1 && !m.vip ? '<button type="button" onclick="fecharJanelaFechamento(); abrirDivisao(\'' + esc(String(m.id)) + '\');" style="background:#fff; border:2px dashed #000; width:100%; margin-top:0.5rem; font-weight:bold;">➗ Dividir conta em vez de fechar tudo junto</button>' : '') +
+                (m.itens.length > 0 && !m.vip ? '<button type="button" onclick="fecharJanelaFechamento(); abrirDivisao(\'' + esc(String(m.id)) + '\');" style="background:#fff; border:2px dashed #000; width:100%; margin-top:0.5rem; font-weight:bold;">➗ Dividir conta em vez de fechar tudo junto</button>' : '') +
                 botoes +
                 '<div style="display:flex; gap:0.5rem; margin-top:1rem; flex-wrap:wrap;">' +
                     '<button type="button" onclick="imprimirFechamento()" style="background:#fff; border:2px solid #000; flex:1;">🖨️ Imprimir comanda</button>' +
@@ -3720,7 +3720,7 @@
                     '<h3>' + esc(nomeMesa(mesaSel)) + '</h3>' +
                     '<div style="display:flex; gap:0.4rem;"><button data-id="' + esc(mesaSel.id) + '" onclick="imprimirAberta(this.getAttribute(\'data-id\'))" title="Imprimir conferência na térmica" style="background:#fff; border: 2px solid #000; padding: 0.25rem 0.5rem; border-radius: 0.5rem;">🖨️</button>' +
                     '<button data-id="' + esc(mesaSel.id) + '" onclick="fecharMesa(this.getAttribute(\'data-id\'))" style="background: #f87171; border: 2px solid #000; padding: 0.25rem 0.5rem; border-radius: 0.5rem;">' + 'Fechar Conta' + '</button>' +
-                    (mesaSel.itens.length > 1 && !mesaSel.vip ? '<button data-id="' + esc(mesaSel.id) + '" onclick="abrirDivisao(this.getAttribute(\'data-id\'))" style="background:#fff; border: 2px solid #000; padding: 0.25rem 0.5rem; border-radius: 0.5rem;">➗ Dividir</button>' : '') + '</div>' +
+                    (mesaSel.itens.length > 0 && !mesaSel.vip ? '<button data-id="' + esc(mesaSel.id) + '" onclick="abrirDivisao(this.getAttribute(\'data-id\'))" style="background:#fff; border: 2px solid #000; padding: 0.25rem 0.5rem; border-radius: 0.5rem;">➗ Dividir</button>' : '') + '</div>' +
                 '</div>' +
                 (mesaSel.vip
                     ? '<div style="margin-bottom: 1rem; font-size: 0.875rem; font-weight: normal;">Total: ' + brl(valorTotalComanda) + '</div>'
