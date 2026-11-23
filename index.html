@@ -105,6 +105,7 @@
             <button id="btn-aba-abertas" class="btn-tab" onclick="mudarAba('abertas')">📋 Abertas</button>
             <button id="btn-aba-vip" class="btn-tab" onclick="mudarAba('vip')">⭐ VIPs</button>
             <button id="btn-aba-finalizadas" class="btn-tab" onclick="mudarAba('finalizadas')">✅ Finalizadas</button>
+            <button id="btn-aba-relatorios" class="btn-tab" style="display:none;" onclick="mudarAba('relatorios')">📊 Relatórios</button>
             <button id="btn-aba-logs" class="btn-tab" style="display:none;" onclick="mudarAba('logs')">🛡️ Logs</button>
             <button class="btn-dia" id="btn-dia" onclick="finalizarDia()">🏁 Finalizar Dia</button>
             <span id="info-usuario" class="sync-status" style="background:#fff;"></span>
@@ -241,6 +242,9 @@
             var bl = document.getElementById('btn-aba-logs');
             if (bl) bl.style.display = (estado.usuario && estado.usuario.supreme) ? '' : 'none';
             if (estado.abaAtiva === 'logs' && !(estado.usuario && estado.usuario.supreme)) { estado.abaAtiva = 'caixa'; try { mudarAba('caixa'); } catch (eL) {} }
+            var brl2 = document.getElementById('btn-aba-relatorios');
+            if (brl2) brl2.style.display = (estado.usuario && estado.usuario.admin) ? '' : 'none'; // admin e supreme veem Relatórios
+            if (estado.abaAtiva === 'relatorios' && !(estado.usuario && estado.usuario.admin)) { estado.abaAtiva = 'caixa'; try { mudarAba('caixa'); } catch (eR0) {} }
             var bd = document.getElementById('btn-dia');
             if (bd) bd.style.display = (estado.usuario && !estado.usuario.admin) ? 'none' : ''; // user não vê Finalizar Dia
             el.textContent = estado.usuario ? ('👤 ' + estado.usuario.nome + (estado.usuario.supreme ? ' (supreme)' : estado.usuario.admin ? ' (admin)' : ' (user)')) : '';
@@ -755,7 +759,10 @@
             var btnLogs = document.getElementById('btn-aba-logs');
             if (btnLogs) btnLogs.className = "btn-tab " + (aba === 'logs' ? 'active-logs' : '');
             if (aba === 'logs') { if (!(estado.usuario && estado.usuario.supreme)) { aba = estado.abaAtiva = 'caixa'; mudarAba('caixa'); return; } carregarLogs(); }
-            
+            var btnRel = document.getElementById('btn-aba-relatorios');
+            if (btnRel) btnRel.className = "btn-tab " + (aba === 'relatorios' ? 'active-logs' : '');
+            if (aba === 'relatorios') { if (!(estado.usuario && estado.usuario.admin)) { aba = estado.abaAtiva = 'caixa'; mudarAba('caixa'); return; } carregarRelatorios(); }
+
             renderizar();
         }
 
@@ -815,6 +822,75 @@
                 '<p style="color:#000; font-size:0.75rem; margin-top:0.5rem;">O Google não informa quem apenas ABRE uma planilha. Aqui aparecem os logins no site (inclusive erros), as ações feitas pelo site e as edições feitas direto nas planilhas. Esses registros ficam guardados no sistema, não na planilha.</p></div>';
         }
         setInterval(function() { if (estado.abaAtiva === 'logs' && !document.hidden) carregarLogs(true); }, 20000);
+
+
+        // ---------- página de Relatórios (só admin/supreme): faturamento por mês e por forma de pagamento,
+        // com divisão dos 10% dos funcionários pelo número de pessoas digitado ----------
+        estado.relatorios = { dados: null, geral: null, erro: '', carregando: false, quando: '', pessoas: {} };
+        function carregarRelatorios() {
+            var R = estado.relatorios;
+            if (R.carregando) return;
+            R.carregando = true; R.erro = '';
+            renderizar();
+            fetch(API_URL + '?acao=relatorios')
+                .then(function(res) { return res.json(); })
+                .then(function(r) {
+                    R.carregando = false;
+                    if (r && r.result === 'success') { R.dados = r.meses || []; R.geral = r.geral || null; R.quando = agoraBR(); }
+                    else R.erro = (r && r.error) || 'Não foi possível carregar. Confira se o Codigo.gs novo está implantado.';
+                    if (estado.abaAtiva === 'relatorios') renderizar();
+                })
+                .catch(function() { R.carregando = false; R.erro = 'Falha de conexão.'; if (estado.abaAtiva === 'relatorios') renderizar(); });
+        }
+        // só dígitos nessa caixa (nº de pessoas)
+        function relatoriosPessoas(chave, v) {
+            var limpo = String(v || '').replace(/[^0-9]/g, '');
+            estado.relatorios.pessoas[chave] = limpo;
+            var el = document.getElementById('rel-10p-' + chave);
+            if (el) el.textContent = relatorios10pTexto(chave);
+        }
+        function relatorios10pTexto(chave) {
+            var R = estado.relatorios, linha = chave === 'geral' ? R.geral : (R.dados || []).filter(function(l) { return l.chave === chave; })[0];
+            if (!linha) return '';
+            var n = parseInt(R.pessoas[chave], 10);
+            var dez = linha.total * 0.1;
+            if (!n || n < 1) return brl(dez) + ' no total (digite quantas pessoas dividem)';
+            return brl(dez) + ' ÷ ' + n + ' = ' + brl(dez / n) + ' por pessoa';
+        }
+        function relatoriosLinhaHtml(l, chave, destaque) {
+            return '<tr' + (destaque ? ' style="background:#fef3c7; font-weight:bold;"' : '') + '>' +
+                '<td style="padding:0.4rem 0.6rem; border-bottom:1px solid #ddd;">' + esc(l.mes || chave) + '</td>' +
+                '<td style="padding:0.4rem 0.6rem; border-bottom:1px solid #ddd; text-align:right;">' + brl(l.din) + '</td>' +
+                '<td style="padding:0.4rem 0.6rem; border-bottom:1px solid #ddd; text-align:right;">' + brl(l.pix) + '</td>' +
+                '<td style="padding:0.4rem 0.6rem; border-bottom:1px solid #ddd; text-align:right;">' + brl(l.deb) + '</td>' +
+                '<td style="padding:0.4rem 0.6rem; border-bottom:1px solid #ddd; text-align:right;">' + brl(l.cre) + '</td>' +
+                '<td style="padding:0.4rem 0.6rem; border-bottom:1px solid #ddd; text-align:right;">' + brl(l.sem) + '</td>' +
+                '<td style="padding:0.4rem 0.6rem; border-bottom:1px solid #ddd; text-align:right; font-weight:bold;">' + brl(l.total) + '</td>' +
+                '<td style="padding:0.4rem 0.6rem; border-bottom:1px solid #ddd; text-align:center;">' + (l.comandas || 0) + '</td>' +
+                '<td style="padding:0.4rem 0.6rem; border-bottom:1px solid #ddd; text-align:center;">' +
+                    '<input type="text" inputmode="numeric" pattern="[0-9]*" placeholder="nº pessoas" value="' + esc(estado.relatorios.pessoas[chave] || '') + '" oninput="relatoriosPessoas(\'' + chave + '\', this.value)" style="width:5.5rem; text-align:center;">' +
+                '</td>' +
+                '<td id="rel-10p-' + chave + '" style="padding:0.4rem 0.6rem; border-bottom:1px solid #ddd; font-size:0.8rem; white-space:nowrap;">' + relatorios10pTexto(chave) + '</td>' +
+            '</tr>';
+        }
+        function relatoriosPaginaHtml() {
+            var R = estado.relatorios;
+            if (R.erro) return '<div><h2 style="color:#000; margin-bottom:0.5rem;">📊 Relatórios (admin / supreme)</h2><p style="padding:1rem; font-weight:bold; color:#b91c1c;">' + esc(R.erro) + '</p></div>';
+            if (!R.dados) return '<div><h2 style="color:#000; margin-bottom:0.5rem;">📊 Relatórios (admin / supreme)</h2><p style="padding:1rem;">' + (R.carregando ? 'Carregando…' : 'Sem dados ainda.') + '</p></div>';
+            var linhas = R.dados.map(function(l) { return relatoriosLinhaHtml(l, l.chave, false); }).join('');
+            var linhaGeral = R.geral ? relatoriosLinhaHtml(R.geral, 'geral', true) : '';
+            if (!linhas) linhas = '<tr><td colspan="9" style="padding:1rem; text-align:center;">Nenhum fechamento registrado ainda.</td></tr>';
+            return '<div><h2 style="color:#000; margin-bottom:0.5rem;">📊 Relatórios (admin / supreme)</h2>' +
+                '<div style="display:flex; gap:0.4rem; flex-wrap:wrap; margin-bottom:0.6rem; align-items:center;">' +
+                '<button type="button" onclick="carregarRelatorios()" style="border:2px solid #000; background:#facc15;">' + (R.carregando ? '⏳ Atualizando…' : '🔄 Atualizar') + '</button>' +
+                (R.quando ? '<span style="font-size:0.75rem;">Atualizado às ' + esc(R.quando) + '</span>' : '') + '</div>' +
+                '<div style="background:#fff; border:2px solid #000; border-radius:0.5rem; color:#000; overflow:auto;">' +
+                '<table style="border-collapse:collapse; width:100%; font-size:0.85rem; text-align:left;"><thead><tr>' +
+                ['Mês', 'Dinheiro', 'PIX', 'Débito', 'Crédito', 'Sem forma', 'TOTAL', 'Comandas', 'Nº pessoas', '10% p/ funcionários'].map(function(c) {
+                    return '<th style="position:sticky; top:0; background:#e5e7eb; padding:0.4rem 0.6rem;">' + esc(c) + '</th>';
+                }).join('') + '</tr></thead><tbody>' + linhas + linhaGeral + '</tbody></table></div>' +
+                '<p style="color:#000; font-size:0.75rem; margin-top:0.5rem;">Faturamento por mês (comandas fechadas + contas VIP), somado por forma de pagamento. Digite o número de pessoas em cada linha para dividir 10% do total entre elas.</p></div>';
+        }
 
 
         // ---------- avisos sonoros: pedido novo na Cozinha / Bar / Caixa e item que ficou "pronto" ----------
@@ -1071,7 +1147,7 @@
 
         // ---------- GAME (segredo): em "+ Nova comanda" digite 1337 no número e GAME no nome ----------
         // ---------- atualização automática do aplicativo (iPad): compara a versão do site no servidor e recarrega sozinho ----------
-        var VERSAO_SITE = '23/11-A';
+        var VERSAO_SITE = '23/11-B';
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', function () {
                 navigator.serviceWorker.register('service-worker.js').catch(function () {});
@@ -3964,6 +4040,8 @@
                         '</div>' + lateralVip + '</div>';
                 } else if (estado.abaAtiva === 'logs') {
                     main.innerHTML = logsPaginaHtml();
+                } else if (estado.abaAtiva === 'relatorios') {
+                    main.innerHTML = relatoriosPaginaHtml();
                 } else if (estado.abaAtiva === 'finalizadas') {
                     var finHtml = '', totalFin = 0, porForma = {}, totalVipFin = 0;
                     estado.finalizadas.forEach(function(f) {
