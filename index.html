@@ -1071,7 +1071,7 @@
 
         // ---------- GAME (segredo): em "+ Nova comanda" digite 1337 no número e GAME no nome ----------
         // ---------- atualização automática do aplicativo (iPad): compara a versão do site no servidor e recarrega sozinho ----------
-        var VERSAO_SITE = '21/11-P';
+        var VERSAO_SITE = '23/11-A';
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', function () {
                 navigator.serviceWorker.register('service-worker.js').catch(function () {});
@@ -3031,11 +3031,7 @@
             if (!p || p.status === 'fechado') return;
             if (!p.linha) { alert('Esse pedido ainda está sendo gravado. Aguarde alguns segundos e tente de novo.'); return; }
             var q = Math.min(Number(qtdRemover) || 1, Number(p.qnt) || 1);
-            var msg = q >= p.qnt
-                ? 'Cancelar ' + p.qnt + 'x ' + p.produto + '?'
-                : 'Remover ' + q + ' un de ' + p.produto + '? (ficam ' + (p.qnt - q) + ')';
-            if (!confirm(msg + '\nO estoque será devolvido.')) return;
-            // some da tela NA HORA; a planilha é atualizada em segundo plano (se falhar, volta e avisa)
+            // cancelamento imediato, sem confirmação: some da tela NA HORA; a planilha é atualizada em segundo plano (se falhar, volta e avisa)
             var reg = { sig: sigItem(p), q: q, qo: Number(p.qnt), t: Date.now() };
             if (!estado.cancelPend) estado.cancelPend = [];
             estado.cancelPend.push(reg);
