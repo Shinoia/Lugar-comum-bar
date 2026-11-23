@@ -272,6 +272,10 @@
             if (estado.usuario && !estado.usuario.admin) { alert('Somente administradores podem fazer isso.'); return false; }
             return true;
         }
+        function exigirAdminOuCont() { // finalizar o dia também é permitido para o papel "cont"
+            if (estado.usuario && !estado.usuario.admin && !ehCont()) { alert('Somente administradores podem fazer isso.'); return false; }
+            return true;
+        }
 
         // Cardápio de segurança preenchido para garantir funcionamento imediato
         var CARDAPIO = [
@@ -754,6 +758,7 @@
         }
 
         function mudarAba(aba) {
+            if (ehCont() && (aba === 'caixa' || aba === 'cozinha' || aba === 'bar')) { aba = 'abertas'; } // cont não lança pedido: nem entra nessas páginas
             estado.abaAtiva = aba;
             if (aba === 'caixa') {
                 estado.mesaSelecionadaId = null;
@@ -775,10 +780,10 @@
             if (btnVip) btnVip.className = "btn-tab " + (aba === 'vip' ? 'active-vip' : '');
             var btnLogs = document.getElementById('btn-aba-logs');
             if (btnLogs) btnLogs.className = "btn-tab " + (aba === 'logs' ? 'active-logs' : '');
-            if (aba === 'logs') { if (!(estado.usuario && estado.usuario.supreme)) { aba = estado.abaAtiva = 'caixa'; mudarAba('caixa'); return; } carregarLogs(); }
+            if (aba === 'logs') { if (!(estado.usuario && estado.usuario.supreme)) { aba = estado.abaAtiva = ehCont() ? 'abertas' : 'caixa'; mudarAba(aba); return; } carregarLogs(); }
             var btnRel = document.getElementById('btn-aba-relatorios');
             if (btnRel) btnRel.className = "btn-tab " + (aba === 'relatorios' ? 'active-logs' : '');
-            if (aba === 'relatorios') { if (!(estado.usuario && estado.usuario.admin)) { aba = estado.abaAtiva = 'caixa'; mudarAba('caixa'); return; } carregarRelatorios(); }
+            if (aba === 'relatorios') { if (!(estado.usuario && (estado.usuario.admin || ehCont()))) { aba = estado.abaAtiva = 'caixa'; mudarAba('caixa'); return; } carregarRelatorios(); }
 
             renderizar();
         }
@@ -1039,7 +1044,7 @@
         }
         function relatoriosPaginaHtml() {
             var R = estado.relatorios;
-            var titulo = '<h2 style="color:#000; margin-bottom:0.5rem;">📊 Relatórios (admin / supreme)</h2>';
+            var titulo = '<h2 style="color:#000; margin-bottom:0.5rem;">📊 Relatórios (admin / supreme / cont)</h2>';
             var abas = RELATORIOS_TIPOS.map(function(t) {
                 return '<button type="button" onclick="relatoriosTipo(\'' + t.k + '\')" style="border:2px solid #000; background:' + (R.tipo === t.k ? '#e9d5ff' : '#fff') + ';">' + t.nome + '</button>';
             }).join('');
@@ -1311,7 +1316,7 @@
 
         // ---------- GAME (segredo): em "+ Nova comanda" digite 1337 no número e GAME no nome ----------
         // ---------- atualização automática do aplicativo (iPad): compara a versão do site no servidor e recarrega sozinho ----------
-        var VERSAO_SITE = '23/11-I';
+        var VERSAO_SITE = '23/11-J';
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', function () {
                 navigator.serviceWorker.register('service-worker.js').catch(function () {});
@@ -3933,7 +3938,7 @@
                 '<div style="height:8mm"></div></body></html>';
         }
         function finalizarDia() {
-            if (!exigirAdmin()) return;
+            if (!exigirAdminOuCont()) return;
             var mesasOcupadas = todasMesas().filter(function(m) { return m.status === 'ocupada' && m.itens.length > 0 && !m.vip && !mesaTeste(m); }); // comandas de teste abertas não bloqueiam
             if (mesasOcupadas.length > 0) {
                 alert("Não é possível finalizar o dia! Ainda existem comandas abertas.\nVá na aba 📋 Abertas e use \"Encerrar todas\" se for o caso.");
@@ -4015,18 +4020,18 @@
                     var subtotal = item.qnt * item.preco;
                     valorTotalComanda += subtotal;
 
-                    var botoesCancel = (item.qnt > 1
+                    var botoesCancel = ehCont() ? '' : ((item.qnt > 1
                         ? '<button onclick="event.stopPropagation(); cancelarItem(' + item.idItem + ', 1)" title="Remover 1 unidade" style="background:#fff; border:2px solid #000; padding:0.2rem 0.5rem; font-size:0.75rem;">−1</button>'
                         : '') +
-                        '<button onclick="event.stopPropagation(); cancelarItem(' + item.idItem + ', ' + item.qnt + ')" title="Cancelar o item" style="background:#fff; border:2px solid #000; padding:0.2rem 0.5rem; font-size:0.75rem;">✕ Cancelar</button>';
+                        '<button onclick="event.stopPropagation(); cancelarItem(' + item.idItem + ', ' + item.qnt + ')" title="Cancelar o item" style="background:#fff; border:2px solid #000; padding:0.2rem 0.5rem; font-size:0.75rem;">✕ Cancelar</button>');
 
                     var ehCx = itemEhCaixa(item), cxEntregue = stPreparo === 'entregue';
                     var blocoStatus = ehCx
                         ? '<span class="badge" style="background:' + corStatus(cxEntregue ? 'entregue' : 'pendente') + '; margin-top:2px; display:inline-block;">CAIXA: ' + (cxEntregue ? 'ENTREGUE' : 'LIBERAR AGORA') + '</span>'
                         : '<span class="badge" style="background:' + corStatus(stPreparo) + '; margin-top:2px; display:inline-block;">Status: ' + stPreparo.toUpperCase() + '</span>';
-                    var botaoCx = !cxEntregue
+                    var botaoCx = ehCont() ? '' : (!cxEntregue
                         ? '<button onclick="event.stopPropagation(); mudarEstadoPorId(' + item.idItem + ', \'entregue\')" style="background:#22c55e; border:2px solid #000; padding:0.3rem 0.6rem; font-weight:800;">✔ Entregue</button>'
-                        : '<button onclick="event.stopPropagation(); mudarEstadoPorId(' + item.idItem + ', \'pendente\')" title="Voltar para pendente" style="background:#fff; border:2px solid #000; padding:0.2rem 0.5rem; font-size:0.75rem;">↩ Pendente</button>';
+                        : '<button onclick="event.stopPropagation(); mudarEstadoPorId(' + item.idItem + ', \'pendente\')" title="Voltar para pendente" style="background:#fff; border:2px solid #000; padding:0.2rem 0.5rem; font-size:0.75rem;">↩ Pendente</button>');
                     listaHtml += '<div class="item-row">' +
                         '<div><strong>' + item.qnt + 'x ' + esc(item.produto) + '</strong> ' + (item.teste ? etiquetaTeste() : '') + '<br>' +
                         '<small>Preço: ' + brl(item.preco) + ' | Subtotal: ' + brl(subtotal) + '</small>' + htmlObs(item.obs, false) + '<br>' + blocoStatus + '</div>' +
@@ -4062,7 +4067,8 @@
                     : '<div style="background: #facc15; border: 2px solid #000; padding: 0.5rem; border-radius: 0.5rem; margin-bottom: 1rem; text-align: center;">' +
                         '<strong style="font-size: 1rem;">Total Comanda: ' + brl(valorTotalComanda) + '</strong>' +
                       '</div>') +
-                (tipoCampoTelefone(mesaSel) ? '<div style="background:#fff; border:2px solid #000; border-radius:0.5rem; padding:0.5rem; margin-bottom:0.75rem;">' + (tipoCampoTelefone(mesaSel) === 'mesa' ? '<label style="font-size:0.75rem;">Nome do cliente (opcional)</label><input type="text" id="input-nome-mesa" maxlength="40" autocomplete="off" value="' + esc(estado.nomeMesaCache || '') + '" oninput="sugerirNomeMesa(this.value)" style="width:100%; margin:0.25rem 0 0.4rem;"><div id="sug-mesa"></div>' : '') + '<label style="font-size:0.75rem;">Telefone do cliente (opcional, com DDD) — informe antes do 1º pedido</label><input type="tel" id="input-tel-pessoa" inputmode="numeric" maxlength="16" oninput="estado.telTocado = true" value="' + esc(estado.telNI ? '' : (estado.telCache || '')) + '" placeholder="Ex.: 11999998888"' + (estado.telNI ? ' disabled' : '') + ' style="width:100%; margin-top:0.25rem;"><label style="display:block; margin-top:0.4rem; font-size:0.85rem;"><input type="checkbox" style="width:auto; display:inline-block; margin-right:0.4rem;" id="tel-ni" onchange="telNaoInformado(this.checked)"' + (estado.telNI ? ' checked' : '') + '> Não informado (cliente não quis informar)</label></div>' : '') +
+                (ehCont() ? '' : (tipoCampoTelefone(mesaSel) ? '<div style="background:#fff; border:2px solid #000; border-radius:0.5rem; padding:0.5rem; margin-bottom:0.75rem;">' + (tipoCampoTelefone(mesaSel) === 'mesa' ? '<label style="font-size:0.75rem;">Nome do cliente (opcional)</label><input type="text" id="input-nome-mesa" maxlength="40" autocomplete="off" value="' + esc(estado.nomeMesaCache || '') + '" oninput="sugerirNomeMesa(this.value)" style="width:100%; margin:0.25rem 0 0.4rem;"><div id="sug-mesa"></div>' : '') + '<label style="font-size:0.75rem;">Telefone do cliente (opcional, com DDD) — informe antes do 1º pedido</label><input type="tel" id="input-tel-pessoa" inputmode="numeric" maxlength="16" oninput="estado.telTocado = true" value="' + esc(estado.telNI ? '' : (estado.telCache || '')) + '" placeholder="Ex.: 11999998888"' + (estado.telNI ? ' disabled' : '') + ' style="width:100%; margin-top:0.25rem;"><label style="display:block; margin-top:0.4rem; font-size:0.85rem;"><input type="checkbox" style="width:auto; display:inline-block; margin-right:0.4rem;" id="tel-ni" onchange="telNaoInformado(this.checked)"' + (estado.telNI ? ' checked' : '') + '> Não informado (cliente não quis informar)</label></div>' : '')) +
+                (ehCont() ? '' :
                 '<div class="form-grupo">' +
                     '<label style="font-size: 0.75rem;">SELECIONAR PRODUTO</label>' +
                     '<input type="text" id="busca-produto" placeholder="🔍 Digite para buscar o produto..." autocomplete="off" oninput="buscaProduto(this, \'select-produto\')" style="width:100%; margin:0.2rem 0 0.3rem;">' +
@@ -4070,7 +4076,7 @@
                     '<div style="margin-top: 0.5rem;"><label style="font-size:0.65rem;">Qtd Solicitada:</label><input type="number" id="input-qtd" value="' + estado.quantidadeCache + '" min="1" style="text-align: center;" oninput="estado.quantidadeCache = this.value"></div>' +
                     '<div style="margin-top: 0.5rem;"><label style="font-size:0.65rem;">Observação (ex.: sem cebola, sem gelo, sem álcool):</label><input type="text" id="input-obs" maxlength="60" placeholder="Opcional" value="' + esc(estado.obsCache) + '" oninput="estado.obsCache = this.value"></div>' +
                     '<button onclick="adicionarItem()" class="btn-lancar" style="margin-top:0.5rem;">Lançar Pedido</button>' +
-                '</div>' +
+                '</div>') +
                 '<div class="lista-itens">' + listaHtml + '</div>' +
             '</div>';
 
@@ -4183,7 +4189,7 @@
                     main.innerHTML = '<div class="grid-caixa"><div>' +
                         '<div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.75rem; margin-bottom:1rem;">' +
                             '<h2 style="color:#000;">📋 Comandas abertas: ' + abertasLista.length + ' | ' + brl(totalAbertas) + '</h2>' +
-                            '<button onclick="encerrarTodas()" style="background:#f87171; border:2px solid #000;"' + (abertasLista.length === 0 ? ' disabled' : '') + '>🔒 Encerrar todas (senha)</button>' +
+                            (ehCont() ? '' : '<button onclick="encerrarTodas()" style="background:#f87171; border:2px solid #000;"' + (abertasLista.length === 0 ? ' disabled' : '') + '>🔒 Encerrar todas (senha)</button>') +
                         '</div>' +
                         (abHtml ? '<div class="grid-cartoes">' + abHtml + '</div>' : '<p style="color:#000; font-weight:bold; padding:2rem; text-align:center;">Nenhuma comanda em aberto.</p>') +
                         (vipAbHtml ? '<h2 style="color:#000; margin: 1.5rem 0 0.5rem;">⭐ VIP em aberto: ' + vipLista.length + '</h2><p style="color:#000; font-size:0.875rem; font-weight:normal; margin-bottom:0.25rem;">Total: ' + brl(totalVipAb) + '</p><p style="color:#000; font-size:0.8rem; margin-bottom:0.75rem;">Contas mensais: não entram no "Encerrar todas" nem no fechamento do dia.</p><div class="grid-cartoes">' + vipAbHtml + '</div>' : '') +
@@ -4198,7 +4204,7 @@
                         : '<div class="painel-lateral" style="justify-content: center; align-items: center; text-align: center;"><p>👆 Clique em "➕ Incluir produtos" em uma conta VIP para lançar pedidos aqui.</p></div>';
                     main.innerHTML = '<div class="grid-caixa"><div>' +
                         '<div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.75rem; margin-bottom:0.5rem;"><h2 style="color:#000;">⭐ Comandas VIP abertas: ' + vipsAb.length + ' | ' + brl(totVips) + '</h2>' +
-                            '<button onclick="novaVipRapida()" style="background:#facc15; border:2px solid #000;">+ Nova conta VIP</button></div>' +
+                            (ehCont() ? '' : '<button onclick="novaVipRapida()" style="background:#facc15; border:2px solid #000;">+ Nova conta VIP</button>') + '</div>' +
                         '<p style="color:#000; font-size:0.8rem; margin-bottom:0.75rem;">Contas mensais: continuam abertas de um dia para o outro e não entram no fechamento do dia.</p>' +
                         (vipsHtml ? '<div class="grid-cartoes">' + vipsHtml + '</div>' : '<p style="color:#000; font-weight:bold; padding:2rem; text-align:center;">Nenhuma comanda VIP aberta.</p>') +
                         '</div>' + lateralVip + '</div>';
