@@ -824,9 +824,18 @@
         setInterval(function() { if (estado.abaAtiva === 'logs' && !document.hidden) carregarLogs(true); }, 20000);
 
 
-        // ---------- página de Relatórios (só admin/supreme): faturamento por mês e por forma de pagamento,
-        // com divisão dos 10% dos funcionários pelo número de pessoas digitado ----------
-        estado.relatorios = { dados: null, geral: null, erro: '', carregando: false, quando: '', pessoas: {} };
+        // ---------- página de Relatórios (só admin/supreme): faturamento em 3 visões —
+        // Diário, Semanal (o bar abre qua/qui/sex/sáb; a semana fecha no sábado, com os dias
+        // anteriores dela minimizados dentro do card da semana) e Mensal — e, em cada linha,
+        // uma caixa de porcentagem (10%, 15%, 20%... o que for digitado) e de nº de pessoas,
+        // pra dividir igualmente o valor dos funcionários ----------
+        estado.relatorios = { tipo: 'semanal', dias: null, semanas: null, meses: null, geral: null, erro: '', carregando: false, quando: '', pct: {}, pessoas: {}, semanasAbertas: {} };
+        var RELATORIOS_TIPOS = [
+            { k: 'diario', nome: '📅 Diário' },
+            { k: 'semanal', nome: '🗓️ Semanal' },
+            { k: 'mensal', nome: '📆 Mensal' }
+        ];
+        function relatoriosTipo(k) { estado.relatorios.tipo = k; renderizar(); }
         function carregarRelatorios() {
             var R = estado.relatorios;
             if (R.carregando) return;
@@ -836,30 +845,51 @@
                 .then(function(res) { return res.json(); })
                 .then(function(r) {
                     R.carregando = false;
-                    if (r && r.result === 'success') { R.dados = r.meses || []; R.geral = r.geral || null; R.quando = agoraBR(); }
+                    if (r && r.result === 'success') { R.dias = r.dias || []; R.semanas = r.semanas || []; R.meses = r.meses || []; R.geral = r.geral || null; R.quando = agoraBR(); }
                     else R.erro = (r && r.error) || 'Não foi possível carregar. Confira se o Codigo.gs novo está implantado.';
                     if (estado.abaAtiva === 'relatorios') renderizar();
                 })
                 .catch(function() { R.carregando = false; R.erro = 'Falha de conexão.'; if (estado.abaAtiva === 'relatorios') renderizar(); });
         }
-        // só dígitos nessa caixa (nº de pessoas)
-        function relatoriosPessoas(chave, v) {
+        function relatoriosAcharLinha_(chave) {
+            var R = estado.relatorios;
+            if (chave === 'geral') return R.geral;
+            var listas = [R.dias || [], R.meses || []].concat((R.semanas || []).map(function(s) { return s; })).concat((R.semanas || []).reduce(function(a, s) { return a.concat(s.dias || []); }, []));
+            for (var i = 0; i < listas.length; i++) { if (listas[i] && listas[i].chave === chave) return listas[i]; }
+            return null;
+        }
+        function relatoriosSplitTexto(chave, pctStr, pessoasStr) {
+            var linha = relatoriosAcharLinha_(chave);
+            if (!linha) return '';
+            var pct = parseFloat(pctStr) || 0, n = parseInt(pessoasStr, 10);
+            var valor = linha.total * (pct / 100);
+            if (!pct) return 'Digite a %';
+            if (!n || n < 1) return brl(valor) + ' no total (' + pct + '%) — digite quantas pessoas dividem';
+            return brl(valor) + ' ÷ ' + n + ' = ' + brl(valor / n) + ' por pessoa';
+        }
+        function relatoriosCampoPct(chave, v) {
+            var limpo = String(v || '').replace(/[^0-9.,]/g, '');
+            estado.relatorios.pct[chave] = limpo;
+            var el = document.getElementById('rel-split-' + chave);
+            if (el) el.textContent = relatoriosSplitTexto(chave, limpo, estado.relatorios.pessoas[chave]);
+        }
+        function relatoriosCampoPessoas(chave, v) {
             var limpo = String(v || '').replace(/[^0-9]/g, '');
             estado.relatorios.pessoas[chave] = limpo;
-            var el = document.getElementById('rel-10p-' + chave);
-            if (el) el.textContent = relatorios10pTexto(chave);
+            var el = document.getElementById('rel-split-' + chave);
+            if (el) el.textContent = relatoriosSplitTexto(chave, estado.relatorios.pct[chave], limpo);
         }
-        function relatorios10pTexto(chave) {
-            var R = estado.relatorios, linha = chave === 'geral' ? R.geral : (R.dados || []).filter(function(l) { return l.chave === chave; })[0];
-            if (!linha) return '';
-            var n = parseInt(R.pessoas[chave], 10);
-            var dez = linha.total * 0.1;
-            if (!n || n < 1) return brl(dez) + ' no total (digite quantas pessoas dividem)';
-            return brl(dez) + ' ÷ ' + n + ' = ' + brl(dez / n) + ' por pessoa';
+        function relatoriosAlternarSemana(chave) {
+            estado.relatorios.semanasAbertas[chave] = !estado.relatorios.semanasAbertas[chave];
+            renderizar();
         }
-        function relatoriosLinhaHtml(l, chave, destaque) {
+        function relatoriosCabecalho() {
+            return ['Data', 'Dinheiro', 'PIX', 'Débito', 'Crédito', 'Sem forma', 'TOTAL', 'Comandas', '%', 'Nº pessoas', 'Valor p/ funcionários'];
+        }
+        function relatoriosLinhaHtml(l, destaque) {
+            var R = estado.relatorios, chave = l.chave;
             return '<tr' + (destaque ? ' style="background:#fef3c7; font-weight:bold;"' : '') + '>' +
-                '<td style="padding:0.4rem 0.6rem; border-bottom:1px solid #ddd;">' + esc(l.mes || chave) + '</td>' +
+                '<td style="padding:0.4rem 0.6rem; border-bottom:1px solid #ddd;">' + esc(l.rotulo) + '</td>' +
                 '<td style="padding:0.4rem 0.6rem; border-bottom:1px solid #ddd; text-align:right;">' + brl(l.din) + '</td>' +
                 '<td style="padding:0.4rem 0.6rem; border-bottom:1px solid #ddd; text-align:right;">' + brl(l.pix) + '</td>' +
                 '<td style="padding:0.4rem 0.6rem; border-bottom:1px solid #ddd; text-align:right;">' + brl(l.deb) + '</td>' +
@@ -868,28 +898,69 @@
                 '<td style="padding:0.4rem 0.6rem; border-bottom:1px solid #ddd; text-align:right; font-weight:bold;">' + brl(l.total) + '</td>' +
                 '<td style="padding:0.4rem 0.6rem; border-bottom:1px solid #ddd; text-align:center;">' + (l.comandas || 0) + '</td>' +
                 '<td style="padding:0.4rem 0.6rem; border-bottom:1px solid #ddd; text-align:center;">' +
-                    '<input type="text" inputmode="numeric" pattern="[0-9]*" placeholder="nº pessoas" value="' + esc(estado.relatorios.pessoas[chave] || '') + '" oninput="relatoriosPessoas(\'' + chave + '\', this.value)" style="width:5.5rem; text-align:center;">' +
+                    '<input type="text" inputmode="decimal" placeholder="10" value="' + esc(R.pct[chave] || '') + '" oninput="relatoriosCampoPct(\'' + chave + '\', this.value)" style="width:3.5rem; text-align:center;">%' +
                 '</td>' +
-                '<td id="rel-10p-' + chave + '" style="padding:0.4rem 0.6rem; border-bottom:1px solid #ddd; font-size:0.8rem; white-space:nowrap;">' + relatorios10pTexto(chave) + '</td>' +
+                '<td style="padding:0.4rem 0.6rem; border-bottom:1px solid #ddd; text-align:center;">' +
+                    '<input type="text" inputmode="numeric" pattern="[0-9]*" placeholder="pessoas" value="' + esc(R.pessoas[chave] || '') + '" oninput="relatoriosCampoPessoas(\'' + chave + '\', this.value)" style="width:5rem; text-align:center;">' +
+                '</td>' +
+                '<td id="rel-split-' + chave + '" style="padding:0.4rem 0.6rem; border-bottom:1px solid #ddd; font-size:0.8rem; white-space:nowrap;">' + relatoriosSplitTexto(chave, R.pct[chave], R.pessoas[chave]) + '</td>' +
             '</tr>';
+        }
+        function relatoriosTabelaHtml(linhas, linhaGeral) {
+            if (!linhas) linhas = '<tr><td colspan="11" style="padding:1rem; text-align:center;">Nenhum fechamento registrado ainda.</td></tr>';
+            return '<div style="background:#fff; border:2px solid #000; border-radius:0.5rem; color:#000; overflow:auto;">' +
+                '<table style="border-collapse:collapse; width:100%; font-size:0.85rem; text-align:left;"><thead><tr>' +
+                relatoriosCabecalho().map(function(c) { return '<th style="position:sticky; top:0; background:#e5e7eb; padding:0.4rem 0.6rem;">' + esc(c) + '</th>'; }).join('') +
+                '</tr></thead><tbody>' + linhas + (linhaGeral || '') + '</tbody></table></div>';
+        }
+        // ---- Diário: lista plana, um dia fechado por linha ----
+        function relatoriosDiarioHtml() {
+            var R = estado.relatorios;
+            var linhas = (R.dias || []).map(function(l) { return relatoriosLinhaHtml(l, false); }).join('');
+            return relatoriosTabelaHtml(linhas, R.geral ? relatoriosLinhaHtml(R.geral, true) : '') +
+                '<p style="color:#000; font-size:0.75rem; margin-top:0.5rem;">Um dia fechado por linha (comandas + contas VIP daquele dia). É aqui que dá pra calcular o valor dos funcionários do dia, já que o acerto é diário.</p>';
+        }
+        // ---- Semanal: um card por semana (qua a sáb); os dias de dentro ficam minimizados até clicar ----
+        function relatoriosSemanaCardHtml(s) {
+            var R = estado.relatorios, aberta = !!R.semanasAbertas[s.chave];
+            var diasHtml = (s.dias || []).map(function(d) { return relatoriosLinhaHtml(d, false); }).join('');
+            return '<div style="background:#fff; border:2px solid #000; border-radius:0.5rem; color:#000; margin-bottom:0.75rem; overflow:hidden;">' +
+                '<div onclick="relatoriosAlternarSemana(\'' + s.chave + '\')" style="cursor:pointer; background:#fef3c7; padding:0.6rem 0.8rem; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.5rem;">' +
+                    '<strong>' + (aberta ? '▾' : '▸') + ' ' + esc(s.rotulo) + '</strong>' +
+                    '<span>' + brl(s.total) + ' · ' + (s.comandas || 0) + ' comanda(s)</span>' +
+                '</div>' +
+                '<div style="padding:0.6rem 0.8rem;"><table style="border-collapse:collapse; width:100%; font-size:0.85rem;"><tbody>' + relatoriosLinhaHtml(s, true) + '</tbody></table></div>' +
+                (aberta ? '<div style="padding:0 0.8rem 0.6rem; overflow:auto;"><p style="font-size:0.75rem; margin-bottom:0.3rem;">Dias desta semana:</p><table style="border-collapse:collapse; width:100%; font-size:0.8rem; text-align:left;"><thead><tr>' +
+                    relatoriosCabecalho().map(function(c) { return '<th style="background:#f3f4f6; padding:0.3rem 0.5rem;">' + esc(c) + '</th>'; }).join('') +
+                    '</tr></thead><tbody>' + diasHtml + '</tbody></table></div>' : '') +
+            '</div>';
+        }
+        function relatoriosSemanalHtml() {
+            var R = estado.relatorios;
+            if (!(R.semanas || []).length) return '<p style="padding:1rem; text-align:center;">Nenhum fechamento registrado ainda.</p>';
+            return R.semanas.map(relatoriosSemanaCardHtml).join('') +
+                '<p style="color:#000; font-size:0.75rem; margin-top:0.5rem;">Cada card é uma semana (quarta a sábado, que é quando o bar abre). Clique no card para ver/esconder os dias de dentro dela.</p>';
+        }
+        // ---- Mensal: igual já era, uma linha por mês ----
+        function relatoriosMensalHtml() {
+            var R = estado.relatorios;
+            var linhas = (R.meses || []).map(function(l) { return relatoriosLinhaHtml(l, false); }).join('');
+            return relatoriosTabelaHtml(linhas, R.geral ? relatoriosLinhaHtml(R.geral, true) : '') +
+                '<p style="color:#000; font-size:0.75rem; margin-top:0.5rem;">Faturamento por mês (comandas fechadas + contas VIP), somado por forma de pagamento.</p>';
         }
         function relatoriosPaginaHtml() {
             var R = estado.relatorios;
-            if (R.erro) return '<div><h2 style="color:#000; margin-bottom:0.5rem;">📊 Relatórios (admin / supreme)</h2><p style="padding:1rem; font-weight:bold; color:#b91c1c;">' + esc(R.erro) + '</p></div>';
-            if (!R.dados) return '<div><h2 style="color:#000; margin-bottom:0.5rem;">📊 Relatórios (admin / supreme)</h2><p style="padding:1rem;">' + (R.carregando ? 'Carregando…' : 'Sem dados ainda.') + '</p></div>';
-            var linhas = R.dados.map(function(l) { return relatoriosLinhaHtml(l, l.chave, false); }).join('');
-            var linhaGeral = R.geral ? relatoriosLinhaHtml(R.geral, 'geral', true) : '';
-            if (!linhas) linhas = '<tr><td colspan="9" style="padding:1rem; text-align:center;">Nenhum fechamento registrado ainda.</td></tr>';
-            return '<div><h2 style="color:#000; margin-bottom:0.5rem;">📊 Relatórios (admin / supreme)</h2>' +
-                '<div style="display:flex; gap:0.4rem; flex-wrap:wrap; margin-bottom:0.6rem; align-items:center;">' +
+            var titulo = '<h2 style="color:#000; margin-bottom:0.5rem;">📊 Relatórios (admin / supreme)</h2>';
+            var abas = RELATORIOS_TIPOS.map(function(t) {
+                return '<button type="button" onclick="relatoriosTipo(\'' + t.k + '\')" style="border:2px solid #000; background:' + (R.tipo === t.k ? '#e9d5ff' : '#fff') + ';">' + t.nome + '</button>';
+            }).join('');
+            var barra = '<div style="display:flex; gap:0.4rem; flex-wrap:wrap; margin-bottom:0.6rem; align-items:center;">' + abas +
                 '<button type="button" onclick="carregarRelatorios()" style="border:2px solid #000; background:#facc15;">' + (R.carregando ? '⏳ Atualizando…' : '🔄 Atualizar') + '</button>' +
-                (R.quando ? '<span style="font-size:0.75rem;">Atualizado às ' + esc(R.quando) + '</span>' : '') + '</div>' +
-                '<div style="background:#fff; border:2px solid #000; border-radius:0.5rem; color:#000; overflow:auto;">' +
-                '<table style="border-collapse:collapse; width:100%; font-size:0.85rem; text-align:left;"><thead><tr>' +
-                ['Mês', 'Dinheiro', 'PIX', 'Débito', 'Crédito', 'Sem forma', 'TOTAL', 'Comandas', 'Nº pessoas', '10% p/ funcionários'].map(function(c) {
-                    return '<th style="position:sticky; top:0; background:#e5e7eb; padding:0.4rem 0.6rem;">' + esc(c) + '</th>';
-                }).join('') + '</tr></thead><tbody>' + linhas + linhaGeral + '</tbody></table></div>' +
-                '<p style="color:#000; font-size:0.75rem; margin-top:0.5rem;">Faturamento por mês (comandas fechadas + contas VIP), somado por forma de pagamento. Digite o número de pessoas em cada linha para dividir 10% do total entre elas.</p></div>';
+                (R.quando ? '<span style="font-size:0.75rem;">Atualizado às ' + esc(R.quando) + '</span>' : '') + '</div>';
+            if (R.erro) return '<div>' + titulo + barra + '<p style="padding:1rem; font-weight:bold; color:#b91c1c;">' + esc(R.erro) + '</p></div>';
+            if (!R.dias) return '<div>' + titulo + barra + '<p style="padding:1rem;">' + (R.carregando ? 'Carregando…' : 'Sem dados ainda.') + '</p></div>';
+            var corpo = R.tipo === 'diario' ? relatoriosDiarioHtml() : R.tipo === 'semanal' ? relatoriosSemanalHtml() : relatoriosMensalHtml();
+            return '<div>' + titulo + barra + corpo + '</div>';
         }
 
 
@@ -1147,7 +1218,7 @@
 
         // ---------- GAME (segredo): em "+ Nova comanda" digite 1337 no número e GAME no nome ----------
         // ---------- atualização automática do aplicativo (iPad): compara a versão do site no servidor e recarrega sozinho ----------
-        var VERSAO_SITE = '23/11-B';
+        var VERSAO_SITE = '23/11-C';
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', function () {
                 navigator.serviceWorker.register('service-worker.js').catch(function () {});
