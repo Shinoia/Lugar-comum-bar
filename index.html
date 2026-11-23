@@ -845,18 +845,23 @@
                 .then(function(res) { return res.json(); })
                 .then(function(r) {
                     R.carregando = false;
-                    if (r && r.result === 'success') { R.dias = r.dias || []; R.semanas = r.semanas || []; R.meses = r.meses || []; R.geral = r.geral || null; R.quando = agoraBR(); }
+                    if (r && r.result === 'success') {
+                        R.dias = r.dias || []; R.semanas = r.semanas || []; R.meses = r.meses || []; R.geral = r.geral || null; R.quando = agoraBR();
+                        // mapa por chave COM prefixo (dia-/sem-/mes-), pra nunca confundir um dia com o sábado
+                        // que fecha uma semana (ambos no formato aaaa-mm-dd, podem ter a mesma data)
+                        R.porChave = {};
+                        R.dias.forEach(function(d) { R.porChave['dia-' + d.chave] = d; });
+                        R.semanas.forEach(function(s) { R.porChave['sem-' + s.chave] = s; });
+                        R.meses.forEach(function(m) { R.porChave['mes-' + m.chave] = m; });
+                        if (R.geral) R.porChave.geral = R.geral;
+                    }
                     else R.erro = (r && r.error) || 'Não foi possível carregar. Confira se o Codigo.gs novo está implantado.';
                     if (estado.abaAtiva === 'relatorios') renderizar();
                 })
                 .catch(function() { R.carregando = false; R.erro = 'Falha de conexão.'; if (estado.abaAtiva === 'relatorios') renderizar(); });
         }
-        function relatoriosAcharLinha_(chave) {
-            var R = estado.relatorios;
-            if (chave === 'geral') return R.geral;
-            var listas = [R.dias || [], R.meses || []].concat((R.semanas || []).map(function(s) { return s; })).concat((R.semanas || []).reduce(function(a, s) { return a.concat(s.dias || []); }, []));
-            for (var i = 0; i < listas.length; i++) { if (listas[i] && listas[i].chave === chave) return listas[i]; }
-            return null;
+        function relatoriosAcharLinha_(chaveEstado) {
+            return (estado.relatorios.porChave || {})[chaveEstado] || null;
         }
         function relatoriosSplitTexto(chave, pctStr, pessoasStr) {
             var linha = relatoriosAcharLinha_(chave);
@@ -916,7 +921,7 @@
         // card de um período (dia, semana ou mês): cabeçalho com total + barrinhas por forma + rodapé com % e nº de pessoas
         function relatoriosCardHtml(l, opts) {
             opts = opts || {};
-            var R = estado.relatorios, chave = l.chave;
+            var R = estado.relatorios, chave = opts.chaveEstado || l.chave;
             return '<div style="background:' + (opts.fundo || '#fff') + '; border:2px solid #000; border-radius:0.5rem; padding:0.7rem 0.8rem; margin-bottom:0.6rem;">' +
                 '<div style="display:flex; justify-content:space-between; align-items:baseline; flex-wrap:wrap; gap:0.4rem; margin-bottom:0.45rem;' + (opts.onclick ? ' cursor:pointer;' : '') + '"' + (opts.onclick ? ' onclick="' + opts.onclick + '"' : '') + '>' +
                     '<strong style="font-size:0.95rem;">' + (opts.seta || '') + esc(l.rotulo) + '</strong>' +
@@ -935,14 +940,14 @@
         function relatoriosDiarioHtml() {
             var R = estado.relatorios;
             if (!(R.dias || []).length) return '<p style="padding:1rem; text-align:center;">Nenhum fechamento registrado ainda.</p>';
-            return relatoriosKpisHtml() + R.dias.map(function(l) { return relatoriosCardHtml(l); }).join('') +
+            return relatoriosKpisHtml() + R.dias.map(function(l) { return relatoriosCardHtml(l, { chaveEstado: 'dia-' + l.chave }); }).join('') +
                 '<p style="color:#000; font-size:0.75rem; margin-top:0.3rem;">Um card por dia fechado (comandas + contas VIP daquele dia). É aqui que dá pra calcular o valor dos funcionários do dia, já que o acerto é diário.</p>';
         }
         // ---- Semanal: um card por semana (qua a sáb); os dias de dentro ficam minimizados até clicar no card ----
         function relatoriosSemanaCardHtml(s) {
             var R = estado.relatorios, aberta = !!R.semanasAbertas[s.chave];
-            var diasHtml = (s.dias || []).map(function(d) { return relatoriosCardHtml(d, { fundo: '#fafafa' }); }).join('');
-            return relatoriosCardHtml(s, { fundo: '#fef3c7', onclick: "relatoriosAlternarSemana('" + s.chave + "')", seta: (aberta ? '▾ ' : '▸ ') }) +
+            var diasHtml = (s.dias || []).map(function(d) { return relatoriosCardHtml(d, { fundo: '#fafafa', chaveEstado: 'dia-' + d.chave }); }).join('');
+            return relatoriosCardHtml(s, { fundo: '#fef3c7', onclick: "relatoriosAlternarSemana('" + s.chave + "')", seta: (aberta ? '▾ ' : '▸ '), chaveEstado: 'sem-' + s.chave }) +
                 (aberta ? '<div style="margin:-0.3rem 0 0.6rem 1rem; padding-left:0.6rem; border-left:3px solid #facc15;">' +
                     '<p style="font-size:0.72rem; color:#666; margin-bottom:0.3rem;">Dias desta semana:</p>' + diasHtml + '</div>' : '');
         }
@@ -956,7 +961,7 @@
         function relatoriosMensalHtml() {
             var R = estado.relatorios;
             if (!(R.meses || []).length) return '<p style="padding:1rem; text-align:center;">Nenhum fechamento registrado ainda.</p>';
-            return relatoriosKpisHtml() + R.meses.map(function(l) { return relatoriosCardHtml(l); }).join('') +
+            return relatoriosKpisHtml() + R.meses.map(function(l) { return relatoriosCardHtml(l, { chaveEstado: 'mes-' + l.chave }); }).join('') +
                 '<p style="color:#000; font-size:0.75rem; margin-top:0.3rem;">Faturamento por mês (comandas fechadas + contas VIP), somado por forma de pagamento.</p>';
         }
         function relatoriosPaginaHtml() {
@@ -1229,7 +1234,7 @@
 
         // ---------- GAME (segredo): em "+ Nova comanda" digite 1337 no número e GAME no nome ----------
         // ---------- atualização automática do aplicativo (iPad): compara a versão do site no servidor e recarrega sozinho ----------
-        var VERSAO_SITE = '23/11-D';
+        var VERSAO_SITE = '23/11-E';
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', function () {
                 navigator.serviceWorker.register('service-worker.js').catch(function () {});
