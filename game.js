@@ -82,64 +82,14 @@
                 }
                 obstUI = out;
             }
-            // ---------- blocos: a cada morte cai 1 bloco quadrado (largura do jacaré); os bonecos pulam nele e dá para arrastar ----------
-            var obstUI = [], blocos = [], BLK = 24 * p, arr = null;
-            function montarObst() { // obstáculos = elementos da página + blocos parados
-                var k, b; obst = obstUI.slice();
-                for (k = 0; k < blocos.length; k++) { b = blocos[k]; if (!b.cai && !b.arrasta) obst.push({ l: b.l, t: b.t, r: b.l + BLK, b: b.t + BLK, bloco: b }); }
-            }
-            function suporteBloco(b, base) { // topo mais próximo (>= base) que sustenta o bloco; chão = H
-                var best = H, k, o, q, r = b.l + BLK;
-                for (k = 0; k < obstUI.length; k++) { o = obstUI[k]; if (r > o.l + 1 && b.l < o.r - 1 && o.t >= base - 0.5 && o.t >= BLK && o.t < best) best = o.t; }
-                for (q = 0; q < blocos.length; q++) { o = blocos[q]; if (o === b || o.cai || o.arrasta) continue; if (r > o.l + 1 && b.l < o.l + BLK - 1 && o.t >= base - 0.5 && o.t < best) best = o.t; }
-                return best;
-            }
-            function criarBloco(x) {
-                if (blocos.length >= 30) blocos.shift();
-                blocos.push({ l: Math.max(2, Math.min(W - BLK - 2, x - BLK / 2)), t: -BLK, vy: 0, cai: true, arrasta: false });
-            }
-            function empilhar(b) { // se pousou dentro de outro bloco (queda simultânea), sobe para cima dele
-                var q, o, mudou = true, n = 0;
-                while (mudou && n++ < 20) {
-                    mudou = false;
-                    for (q = 0; q < blocos.length; q++) { o = blocos[q]; if (o === b || o.cai || o.arrasta) continue; if (b.l + BLK > o.l + 1 && b.l < o.l + BLK - 1 && b.t + BLK > o.t + 1 && b.t < o.t + BLK - 1) { b.t = o.t - BLK; mudou = true; } }
-                }
-            }
-            function afastarDoBloco(b) { // quem estiver dentro de onde o bloco pousou é empurrado para o lado
-                var k, h, cx = b.l + BLK / 2;
-                for (k = 0; k < j.hs.length; k++) {
-                    h = j.hs[k];
-                    if (h.estado !== 'vivo' && h.estado !== 'parado') continue;
-                    if (h.x + BW / 2 > b.l && h.x - BW / 2 < b.l + BLK && h.y > b.t + 1 && h.y - BH < b.t + BLK) {
-                        h.x = h.x < cx ? b.l - BW / 2 - 1 : b.l + BLK + BW / 2 + 1;
-                        h.x = Math.max(BW / 2, Math.min(W - BW / 2, h.x));
-                    }
-                }
-            }
-            function passoBlocos() {
-                var k, b, sup, nb, lado;
-                for (k = 0; k < blocos.length; k++) {
-                    b = blocos[k];
-                    if (b.arrasta) continue;
-                    if (b.cai) {
-                        b.vy += GRAV; if (b.vy > 14) b.vy = 14; nb = b.t + BLK + b.vy; sup = suporteBloco(b, b.t + BLK - 0.5);
-                        if (nb >= sup) { b.t = sup - BLK; b.vy = 0; b.cai = false; empilhar(b); afastarDoBloco(b); }
-                        else b.t += b.vy;
-                    }
-                }
-                montarObst();
-                for (k = 0; k < blocos.length; k++) {
-                    b = blocos[k];
-                    g.fillStyle = '#6b4423'; g.fillRect(b.l, b.t, BLK, BLK);
-                    g.fillStyle = '#b8803f'; g.fillRect(b.l + 3, b.t + 3, BLK - 6, BLK - 6);
-                    g.strokeStyle = '#7a4d26'; g.lineWidth = 3; g.beginPath(); g.moveTo(b.l + 4, b.t + 4); g.lineTo(b.l + BLK - 4, b.t + BLK - 4); g.moveTo(b.l + BLK - 4, b.t + 4); g.lineTo(b.l + 4, b.t + BLK - 4); g.stroke();
-                    g.fillStyle = '#e0b070'; g.fillRect(b.l + 3, b.t + 3, BLK - 6, 2);
-                }
-            }
+            // (os blocos de madeira que caiam a cada morte foram removidos a pedido)
+            var obstUI = [];
+            function montarObst() { obst = obstUI.slice(); } // obstáculos = só os elementos da página
+            function passoBlocos() { montarObst(); }
             lerObstaculos(); montarObst();
             var j = { raf: 0, cabecas: 0, toques: [], fim: false, el: el, hs: [], t0: Date.now(), ic: ic, heroiLib: true, heroiQuando: Date.now() + 6000, oncaQuando: Date.now() + 9000 };   // o herói voador surge 1 s depois do último personagem (4º em 5 s)
             jogo = j;
-            j.blocos = blocos; j.criarBloco = criarBloco; j.getObst = function() { return obst; }; j.bate = bate;
+            j.getObst = function() { return obst; }; j.bate = bate;
             function novo(tipo) {
                 tipo = tipo || 0;
                 var cores = ['#009c3b', '#2b2f3a', '#1d3f9e', '#222', '#7a5a3a'];   // 0 jogador verde/amarelo, 1 político, 2 Tio Sam, 3 revolucionário, 4 senhor grisalho (morre só para a ema)
@@ -1246,7 +1196,7 @@
                     humano(h);
                     if (h.fase >= 1 && !h.acabou) { if (h.morte === 'ferramentas' || h.morte === 'foice' || h.morte === 'martelo') animarFerramentas(h); else animarMorte(h); }
                     if (h.acabou) { // ressurge 1 s depois, para poder ser morto de novo
-                        if (!h.renasce) { h.renasce = Date.now(); j.mortesBloco = (j.mortesBloco || 0) + 1; if (j.mortesBloco % 3 === 0) criarBloco(h.x); if ((h.morte === 'ferramentas' || h.morte === 'foice' || h.morte === 'martelo') && ic) ic.style.visibility = 'visible'; }
+                        if (!h.renasce) { h.renasce = Date.now(); if ((h.morte === 'ferramentas' || h.morte === 'foice' || h.morte === 'martelo') && ic) ic.style.visibility = 'visible'; }
                         else if (Date.now() - h.renasce >= 1000) { var nv = novo(h.tipo); nv.mortes = h.mortes + 1; nv.estagio = h.estagio; nv.jc = h.jc; nv.forma = h.forma;
                             if (h.tipo === 0) { // 1º: humano → (vacina) jacaré → boi → abduzido → volta a humano
                                 if (h.estagio === 0) { nv.estagio = 1; nv.forma = 'humano'; }
@@ -1301,10 +1251,7 @@
                 if (nu && nu.t > 0 && nu.par && !nu.onca && !nu.raio && !j.pantera && (px - nu.x) * (px - nu.x) + (py - nu.y) * (py - nu.y) < (BW * 3) * (BW * 3)) { chamarPantera(); j.toques = []; return; }
                 var he = j.heroi;
                 if (he && he.estado === 'voa' && !he.condenado && Math.abs(px - he.x) < BW * 1.7 && Math.abs(py - he.y) < BH * 1.2) { matarHeroi(); j.toques = []; return; }
-                var hit = acertou(px, py), kb, bq;
-                if (!hit) { // pegou um bloco? arrasta
-                    for (kb = blocos.length - 1; kb >= 0; kb--) { bq = blocos[kb]; if (px >= bq.l && px <= bq.l + BLK && py >= bq.t && py <= bq.t + BLK) { bq.arrasta = true; bq.cai = false; bq.vy = 0; arr = { b: bq, dx: px - bq.l, dy: py - bq.t }; return; } }
-                }
+                var hit = acertou(px, py);
                 if (hit) {
                     var h = hit;
                     h.estado = 'parado'; h.vx = 0; h.fase = 1; h.ft = 0; j.toques = [];
@@ -1315,7 +1262,6 @@
                 cur = { x0: px, y0: py, ult: { x: px, y: py }, len: 0, n: 0, t0: Date.now() };
             }
             function mover2(px, py) {
-                if (arr) { arr.b.l = Math.max(0, Math.min(W - BLK, px - arr.dx)); arr.b.t = Math.max(0, Math.min(H - BLK, py - arr.dy)); return; }
                 if (!cur) return;
                 var dx = px - cur.ult.x, dy = py - cur.ult.y, d = Math.sqrt(dx * dx + dy * dy);
                 if (d < 6) return;
@@ -1325,7 +1271,6 @@
                 cur.len += d; cur.n++; cur.ult = { x: px, y: py };
             }
             function subir(px, py) {
-                if (arr) { arr.b.arrasta = false; arr.b.cai = false; arr.b.vy = 0; empilhar(arr.b); afastarDoBloco(arr.b); arr = null; return; }   // solto, o bloco fica onde foi deixado
                 if (!cur) return;
                 var c = cur; cur = null;
                 if (c.len < 14) { // foi só um toque: apaga o risquinho e conta como toque de saída
