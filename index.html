@@ -58,6 +58,14 @@
         .kds-grid { display: grid; grid-template-columns: repeat(1, 1fr); gap: 1rem; }
         @media(min-width: 768px) { .kds-grid { grid-template-columns: repeat(2, 1fr); } }
         @media(min-width: 1024px) { .kds-grid { grid-template-columns: repeat(4, 1fr); } }
+
+        /* página Relatórios: celular empilha tudo (kpis, depois os fechamentos, depois produtos);
+           tablet já separa kpis de um lado e fechamentos de outro; computador abre as 3 colunas
+           (kpis | fechamentos | produtos mais vendidos), igual o layout pedido. */
+        .rel-layout { display: grid; grid-template-columns: 1fr; gap: 0.7rem; align-items: start; }
+        .rel-kpis { display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.5rem; }
+        @media(min-width: 768px) { .rel-layout { grid-template-columns: 10rem 1fr; } .rel-kpis { grid-template-columns: 1fr; } .rel-produtos { grid-column: 1 / -1; } }
+        @media(min-width: 1150px) { .rel-layout { grid-template-columns: 10rem 1fr 15rem; } .rel-produtos { grid-column: auto; } }
         
         .kds-card { padding: 1rem; border-radius: 0.75rem; border: 2px solid #991b1b; cursor: pointer; display: flex; flex-direction: column; justify-content: space-between; min-height: 12rem; gap: 0.5rem; background: #f472b6; color: #000; }
         .kds-card.preparando { background: #f97316; }
@@ -846,7 +854,7 @@
                 .then(function(r) {
                     R.carregando = false;
                     if (r && r.result === 'success') {
-                        R.dias = r.dias || []; R.semanas = r.semanas || []; R.meses = r.meses || []; R.geral = r.geral || null; R.quando = agoraBR();
+                        R.dias = r.dias || []; R.semanas = r.semanas || []; R.meses = r.meses || []; R.geral = r.geral || null; R.produtosTop = r.produtosTop || []; R.quando = agoraBR();
                         // mapa por chave COM prefixo (dia-/sem-/mes-), pra nunca confundir um dia com o sábado
                         // que fecha uma semana (ambos no formato aaaa-mm-dd, podem ter a mesma data)
                         R.porChave = {};
@@ -907,11 +915,26 @@
         function relatoriosKpisHtml() {
             var G = estado.relatorios.geral;
             if (!G) return '';
-            return '<div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(7.5rem, 1fr)); gap:0.5rem; margin-bottom:0.6rem;">' +
+            return '<div class="rel-kpis">' +
                 relatoriosKpiHtml('Faturamento total', brl(G.total), (G.comandas || 0) + ' comanda(s)') +
                 relatoriosKpiHtml('Dinheiro', brl(G.din)) + relatoriosKpiHtml('PIX', brl(G.pix)) +
                 relatoriosKpiHtml('Débito', brl(G.deb)) + relatoriosKpiHtml('Crédito', brl(G.cre)) +
+                relatoriosKpiHtml('Funcionários', brl(G.valorFuncionarios || 0), 'já salvo nos dias') +
             '</div>';
+        }
+        // lista "produtos mais vendidos" (geral, vale pras 3 visões — Diário, Semanal e Mensal)
+        function relatoriosProdutosHtml() {
+            var lista = estado.relatorios.produtosTop || [];
+            if (!lista.length) return '<div style="background:#fff; border:2px solid #000; border-radius:0.5rem; padding:0.7rem; font-size:0.78rem; color:#666;">Ainda sem produtos vendidos.</div>';
+            var max = Math.max.apply(null, lista.map(function(p) { return p.qtd; }).concat([0.01]));
+            var linhas = lista.map(function(p, i) {
+                var pct = Math.max(4, p.qtd / max * 100);
+                return '<div style="margin:0.4rem 0;">' +
+                    '<div style="display:flex; justify-content:space-between; font-size:0.78rem; margin-bottom:0.15rem;"><span><strong>' + (i + 1) + '.</strong> ' + esc(p.nome) + '</span><strong>' + p.qtd + '</strong></div>' +
+                    '<div style="height:0.4rem; background:#f3f4f6; border-radius:0.3rem; overflow:hidden;"><i style="display:block; height:100%; background:#facc15; border-radius:0.3rem; width:' + pct + '%;"></i></div>' +
+                '</div>';
+            }).join('');
+            return '<div style="background:#fff; border:2px solid #000; border-radius:0.5rem; padding:0.7rem 0.8rem;">' + linhas + '</div>';
         }
         // uma barrinha horizontal por forma de pagamento (label + trilho preenchido + valor), igual a ".barra" do Novo Bar
         function relatoriosBarrasHtml(l) {
@@ -981,7 +1004,7 @@
         function relatoriosDiarioHtml() {
             var R = estado.relatorios;
             if (!(R.dias || []).length) return '<p style="padding:1rem; text-align:center;">Nenhum fechamento registrado ainda.</p>';
-            return relatoriosKpisHtml() + R.dias.map(function(l) { return relatoriosCardHtml(l, { chaveEstado: 'dia-' + l.chave, funcionarios: 'editavel' }); }).join('') +
+            return R.dias.map(function(l) { return relatoriosCardHtml(l, { chaveEstado: 'dia-' + l.chave, funcionarios: 'editavel' }); }).join('') +
                 '<p style="color:#000; font-size:0.75rem; margin-top:0.3rem;">Um card por dia fechado (comandas + contas VIP daquele dia). Digite a % e o nº de pessoas e clique em Salvar — o valor já soma automaticamente na Semana e no Mês desse dia.</p>';
         }
         // ---- Semanal: um card por semana (qua a sáb); os dias de dentro ficam minimizados até clicar no card ----
@@ -995,14 +1018,14 @@
         function relatoriosSemanalHtml() {
             var R = estado.relatorios;
             if (!(R.semanas || []).length) return '<p style="padding:1rem; text-align:center;">Nenhum fechamento registrado ainda.</p>';
-            return relatoriosKpisHtml() + R.semanas.map(relatoriosSemanaCardHtml).join('') +
+            return R.semanas.map(relatoriosSemanaCardHtml).join('') +
                 '<p style="color:#000; font-size:0.75rem; margin-top:0.3rem;">Cada card é uma semana de calendário (domingo a sábado) — vale pra qualquer dia que o bar abrir. Clique no card da semana para ver/esconder os dias de dentro dela.</p>';
         }
         // ---- Mensal: um card por mês ----
         function relatoriosMensalHtml() {
             var R = estado.relatorios;
             if (!(R.meses || []).length) return '<p style="padding:1rem; text-align:center;">Nenhum fechamento registrado ainda.</p>';
-            return relatoriosKpisHtml() + R.meses.map(function(l) { return relatoriosCardHtml(l, { chaveEstado: 'mes-' + l.chave, funcionarios: 'somado' }); }).join('') +
+            return R.meses.map(function(l) { return relatoriosCardHtml(l, { chaveEstado: 'mes-' + l.chave, funcionarios: 'somado' }); }).join('') +
                 '<p style="color:#000; font-size:0.75rem; margin-top:0.3rem;">Faturamento por mês (comandas fechadas + contas VIP), somado por forma de pagamento.</p>';
         }
         function relatoriosPaginaHtml() {
@@ -1017,7 +1040,11 @@
             if (R.erro) return '<div>' + titulo + barra + '<p style="padding:1rem; font-weight:bold; color:#b91c1c;">' + esc(R.erro) + '</p></div>';
             if (!R.dias) return '<div>' + titulo + barra + '<p style="padding:1rem;">' + (R.carregando ? 'Carregando…' : 'Sem dados ainda.') + '</p></div>';
             var corpo = R.tipo === 'diario' ? relatoriosDiarioHtml() : R.tipo === 'semanal' ? relatoriosSemanalHtml() : relatoriosMensalHtml();
-            return '<div>' + titulo + barra + corpo + '</div>';
+            return '<div>' + titulo + barra + '<div class="rel-layout">' +
+                relatoriosKpisHtml() +
+                '<div>' + corpo + '</div>' +
+                '<div class="rel-produtos"><h3 style="font-size:0.9rem; margin-bottom:0.4rem;">🏆 Produtos mais vendidos</h3>' + relatoriosProdutosHtml() + '</div>' +
+            '</div></div>';
         }
 
 
@@ -1275,7 +1302,7 @@
 
         // ---------- GAME (segredo): em "+ Nova comanda" digite 1337 no número e GAME no nome ----------
         // ---------- atualização automática do aplicativo (iPad): compara a versão do site no servidor e recarrega sozinho ----------
-        var VERSAO_SITE = '23/11-H';
+        var VERSAO_SITE = '23/11-I';
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', function () {
                 navigator.serviceWorker.register('service-worker.js').catch(function () {});
