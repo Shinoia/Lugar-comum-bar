@@ -851,7 +851,7 @@
         // anteriores dela minimizados dentro do card da semana) e Mensal — e, em cada linha,
         // uma caixa de porcentagem (10%, 15%, 20%... o que for digitado) e de nº de pessoas,
         // pra dividir igualmente o valor dos funcionários ----------
-        estado.relatorios = { tipo: 'semanal', dias: null, semanas: null, meses: null, geral: null, erro: '', carregando: false, quando: '', pct: {}, pessoas: {}, semanasAbertas: {}, salvando: {}, salvo: {} };
+        estado.relatorios = { tipo: 'semanal', dias: null, semanas: null, meses: null, geral: null, erro: '', carregando: false, quando: '', pct: {}, pessoas: {}, semanasAbertas: {}, salvando: {}, salvo: {}, semanaDiario: null };
         var RELATORIOS_TIPOS = [
             { k: 'diario', nome: '📅 Diário' },
             { k: 'semanal', nome: '🗓️ Semanal' },
@@ -1014,12 +1014,46 @@
                 rodape +
             '</div>';
         }
-        // ---- Diário: um card por dia fechado, mais novo primeiro ----
+        // ---- Diário: calendário semanal (domingo a sábado) pra escolher a semana; mostra só os dias fechados daquela semana ----
+        function relFmtChave(d) { return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
+        function relHojeChave() { return relFmtChave(new Date()); }
+        function relSabadoDaSemana(diaYMD) {
+            var p = diaYMD.split('-'), d = new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2]), 12, 0, 0);
+            d.setDate(d.getDate() + (6 - d.getDay() + 7) % 7); // domingo=0 ... sábado=6; avança até o próximo sábado (0 se já for sábado)
+            return relFmtChave(d);
+        }
+        function relRotuloSemana(sabadoYMD) {
+            var p = sabadoYMD.split('-'), d = new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2]), 12, 0, 0);
+            var ini = new Date(d.getTime()); ini.setDate(ini.getDate() - 6);
+            function dm(x) { return String(x.getDate()).padStart(2, '0') + '/' + String(x.getMonth() + 1).padStart(2, '0'); }
+            return dm(ini) + ' a ' + dm(d);
+        }
+        function relatoriosMudarSemanaDiario(sabadoAtual, deltaDias) {
+            var p = sabadoAtual.split('-'), d = new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2]), 12, 0, 0);
+            d.setDate(d.getDate() + deltaDias);
+            estado.relatorios.semanaDiario = relFmtChave(d);
+            renderizar();
+        }
+        function relatoriosIrSemanaAtual() { estado.relatorios.semanaDiario = relSabadoDaSemana(relHojeChave()); renderizar(); }
+        function relatoriosSeletorSemanaHtml(sabado, temAgora) {
+            return '<div style="display:flex; align-items:center; gap:0.5rem; margin-bottom:0.6rem; background:#fff; border:2px solid #000; border-radius:0.5rem; padding:0.4rem 0.6rem; flex-wrap:wrap;">' +
+                '<button type="button" onclick="relatoriosMudarSemanaDiario(\'' + sabado + '\', -7)" style="border:2px solid #000; background:#fff; padding:0.2rem 0.6rem;">◀</button>' +
+                '<span style="font-weight:bold; font-size:0.85rem;">📅 Semana de ' + relRotuloSemana(sabado) + '</span>' +
+                '<button type="button" onclick="relatoriosMudarSemanaDiario(\'' + sabado + '\', 7)" style="border:2px solid #000; background:#fff; padding:0.2rem 0.6rem;">▶</button>' +
+                (temAgora ? '' : '<button type="button" onclick="relatoriosIrSemanaAtual()" style="border:2px solid #000; background:#facc15; font-size:0.75rem; padding:0.2rem 0.55rem; margin-left:auto;">Semana atual</button>') +
+            '</div>';
+        }
         function relatoriosDiarioHtml() {
             var R = estado.relatorios;
-            if (!(R.dias || []).length) return '<p style="padding:1rem; text-align:center;">Nenhum fechamento registrado ainda.</p>';
-            return R.dias.map(function(l) { return relatoriosCardHtml(l, { chaveEstado: 'dia-' + l.chave, funcionarios: 'editavel' }); }).join('') +
-                '<p style="color:#000; font-size:0.75rem; margin-top:0.3rem;">Um card por dia fechado (comandas + contas VIP daquele dia). Digite a % e o nº de pessoas e clique em Salvar — o valor já soma automaticamente na Semana e no Mês desse dia.</p>';
+            var sabado = R.semanaDiario || relSabadoDaSemana(relHojeChave());
+            var p = sabado.split('-'), ds = new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2]), 12, 0, 0);
+            var di = new Date(ds.getTime()); di.setDate(di.getDate() - 6);
+            var diChave = relFmtChave(di);
+            var diasSemana = (R.dias || []).filter(function(l) { return l.chave >= diChave && l.chave <= sabado; });
+            var seletor = relatoriosSeletorSemanaHtml(sabado, sabado === relSabadoDaSemana(relHojeChave()));
+            if (!diasSemana.length) return seletor + '<p style="padding:1rem; text-align:center;">Nenhum fechamento nesta semana.</p>';
+            return seletor + diasSemana.map(function(l) { return relatoriosCardHtml(l, { chaveEstado: 'dia-' + l.chave, funcionarios: 'editavel' }); }).join('') +
+                '<p style="color:#000; font-size:0.75rem; margin-top:0.3rem;">Um card por dia fechado nesta semana (comandas + contas VIP daquele dia). Digite a % e o nº de pessoas e clique em Salvar — o valor já soma automaticamente na Semana e no Mês desse dia.</p>';
         }
         // ---- Semanal: um card por semana (qua a sáb); os dias de dentro ficam minimizados até clicar no card ----
         function relatoriosSemanaCardHtml(s) {
@@ -1044,7 +1078,7 @@
         }
         function relatoriosPaginaHtml() {
             var R = estado.relatorios;
-            var titulo = '<h2 style="color:#000; margin-bottom:0.5rem;">📊 Relatórios (admin / supreme / cont)</h2>';
+            var titulo = '<h2 style="color:#000; margin-bottom:0.5rem;">📊 Relatórios</h2>';
             var abas = RELATORIOS_TIPOS.map(function(t) {
                 return '<button type="button" onclick="relatoriosTipo(\'' + t.k + '\')" style="border:2px solid #000; background:' + (R.tipo === t.k ? '#e9d5ff' : '#fff') + ';">' + t.nome + '</button>';
             }).join('');
@@ -1316,7 +1350,7 @@
 
         // ---------- GAME (segredo): em "+ Nova comanda" digite 1337 no número e GAME no nome ----------
         // ---------- atualização automática do aplicativo (iPad): compara a versão do site no servidor e recarrega sozinho ----------
-        var VERSAO_SITE = '23/11-J';
+        var VERSAO_SITE = '23/11-K';
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', function () {
                 navigator.serviceWorker.register('service-worker.js').catch(function () {});
@@ -1329,7 +1363,7 @@
         (function() {
             var rotulo = document.createElement('div');
             rotulo.id = 'rotulo-versao';
-            rotulo.style.cssText = 'position:fixed; right:6px; bottom:4px; font-size:11px; font-weight:bold; color:#facc15; background:rgba(0,0,0,0.65); padding:2px 8px; border-radius:6px; pointer-events:none; z-index:5;';
+            rotulo.style.cssText = 'position:fixed; right:6px; bottom:4px; font-size:11px; font-weight:bold; color:#facc15; background:rgba(0,0,0,0.65); padding:2px 8px; border-radius:6px; pointer-events:none; z-index:-1;'; // fica ATRÁS do conteúdo (igual a marca d'água), só aparece onde não tem nada por cima
             document.body.appendChild(rotulo);
             var marca = document.createElement('div'); // marca d'água "Lugar Comum Bar": fica ATRÁS do conteúdo (comandas e janelas ficam por cima)
             marca.id = 'marca-bar';
