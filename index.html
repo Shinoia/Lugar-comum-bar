@@ -919,9 +919,9 @@
             var max = Math.max.apply(null, formas.map(function(f) { return f[1]; }).concat([0.01]));
             return formas.filter(function(f) { return f[1] > 0; }).map(function(f) {
                 var pct = Math.max(2, f[1] / max * 100);
-                return '<div style="display:flex; align-items:center; margin:0.3rem 0; font-size:0.78rem;">' +
+                return '<div style="display:flex; align-items:center; margin:0.12rem 0; font-size:0.78rem;">' +
                     '<span style="width:4.6rem; flex-shrink:0; font-weight:600;">' + esc(f[0]) + '</span>' +
-                    '<span style="flex:1; height:0.6rem; background:#f3f4f6; border-radius:0.4rem; overflow:hidden; margin:0 0.5rem;"><i style="display:block; height:100%; background:#facc15; border-radius:0.4rem; width:' + pct + '%;"></i></span>' +
+                    '<span style="flex:1; height:0.45rem; background:#f3f4f6; border-radius:0.3rem; overflow:hidden; margin:0 0.5rem;"><i style="display:block; height:100%; background:#facc15; border-radius:0.3rem; width:' + pct + '%;"></i></span>' +
                     '<span style="min-width:4.4rem; text-align:right; font-weight:bold;">' + brl(f[1]) + '</span>' +
                 '</div>';
             }).join('') || '<div style="font-size:0.78rem; color:#666;">Sem valores neste período.</div>';
@@ -950,26 +950,28 @@
         function relatoriosCardHtml(l, opts) {
             opts = opts || {};
             var R = estado.relatorios, chave = opts.chaveEstado || l.chave;
+            var liquido = l.total - (l.valorFuncionarios || 0);
+            var liquidoHtml = '<span style="font-size:0.72rem; color:#166534;"> · líquido ' + brl(liquido) + '</span>';
             var rodape = '';
             if (opts.funcionarios === 'editavel') {
                 var ke = chave, salvando = !!R.salvando[ke], salvo = !!R.salvo[ke];
-                rodape = '<div style="display:flex; align-items:center; flex-wrap:wrap; gap:0.4rem; margin-top:0.5rem; padding-top:0.45rem; border-top:1px dashed #ccc;">' +
+                rodape = '<div style="display:flex; align-items:center; flex-wrap:wrap; gap:0.35rem; margin-top:0.35rem; padding-top:0.3rem; border-top:1px dashed #ccc;">' +
                     '<span style="font-size:0.75rem;">Funcionários:</span>' +
                     '<input type="text" inputmode="decimal" placeholder="10" value="' + esc(R.pct[ke] || '') + '" oninput="relatoriosCampoPct(\'' + ke + '\', this.value)" style="width:3rem; text-align:center;">%' +
                     '<input type="text" inputmode="numeric" pattern="[0-9]*" placeholder="nº pessoas" value="' + esc(R.pessoas[ke] || '') + '" oninput="relatoriosCampoPessoas(\'' + ke + '\', this.value)" style="width:5.5rem; text-align:center;">' +
                     '<span id="rel-split-' + ke + '" style="font-size:0.78rem; font-weight:bold; white-space:nowrap;">' + relatoriosSplitTexto(ke, R.pct[ke], R.pessoas[ke]) + '</span>' +
-                    '<button type="button" onclick="relatoriosSalvarDia(\'' + l.chave + '\')" style="border:2px solid #000; background:' + (salvo ? '#bbf7d0' : '#facc15') + '; font-size:0.78rem; padding:0.25rem 0.6rem;">' + (salvando ? '⏳ Salvando…' : (salvo ? '✅ Salvo' : '💾 Salvar')) + '</button>' +
+                    '<button type="button" onclick="relatoriosSalvarDia(\'' + l.chave + '\')" style="border:2px solid #000; background:' + (salvo ? '#bbf7d0' : '#facc15') + '; font-size:0.78rem; padding:0.2rem 0.55rem;">' + (salvando ? '⏳ Salvando…' : (salvo ? '✅ Salvo' : '💾 Salvar')) + '</button>' +
                 '</div>';
             } else if (opts.funcionarios === 'somado') {
-                rodape = '<div style="display:flex; align-items:center; flex-wrap:wrap; gap:0.4rem; margin-top:0.5rem; padding-top:0.45rem; border-top:1px dashed #ccc; font-size:0.78rem;">' +
+                rodape = '<div style="display:flex; align-items:center; flex-wrap:wrap; gap:0.35rem; margin-top:0.35rem; padding-top:0.3rem; border-top:1px dashed #ccc; font-size:0.78rem;">' +
                     '<span>💰 Funcionários (soma do que foi salvo em cada dia):</span>' +
                     '<strong>' + brl(l.valorFuncionarios || 0) + '</strong>' +
                 '</div>';
             }
-            return '<div style="background:' + (opts.fundo || '#fff') + '; border:2px solid #000; border-radius:0.5rem; padding:0.7rem 0.8rem; margin-bottom:0.6rem;">' +
-                '<div style="display:flex; justify-content:space-between; align-items:baseline; flex-wrap:wrap; gap:0.4rem; margin-bottom:0.45rem;' + (opts.onclick ? ' cursor:pointer;' : '') + '"' + (opts.onclick ? ' onclick="' + opts.onclick + '"' : '') + '>' +
+            return '<div style="background:' + (opts.fundo || '#fff') + '; border:2px solid #000; border-radius:0.5rem; padding:0.55rem 0.7rem; margin-bottom:0.45rem;">' +
+                '<div style="display:flex; justify-content:space-between; align-items:baseline; flex-wrap:wrap; gap:0.4rem; margin-bottom:0.3rem;' + (opts.onclick ? ' cursor:pointer;' : '') + '"' + (opts.onclick ? ' onclick="' + opts.onclick + '"' : '') + '>' +
                     '<strong style="font-size:0.95rem;">' + (opts.seta || '') + esc(l.rotulo) + '</strong>' +
-                    '<span><strong style="color:#b91c1c; font-size:1.05rem;">' + brl(l.total) + '</strong> <span style="font-size:0.75rem; color:#666;">· ' + (l.comandas || 0) + ' comanda(s)' + (l.aberto ? ' · ' + brl(l.aberto) + ' em aberto' : '') + '</span></span>' +
+                    '<span><strong style="color:#b91c1c; font-size:1.05rem;">' + brl(l.total) + '</strong>' + liquidoHtml + ' <span style="font-size:0.75rem; color:#666;">· ' + (l.comandas || 0) + ' comanda(s)' + (l.aberto ? ' · ' + brl(l.aberto) + ' em aberto' : '') + '</span></span>' +
                 '</div>' +
                 (opts.semBarras ? '' : relatoriosBarrasHtml(l)) +
                 rodape +
@@ -1273,7 +1275,7 @@
 
         // ---------- GAME (segredo): em "+ Nova comanda" digite 1337 no número e GAME no nome ----------
         // ---------- atualização automática do aplicativo (iPad): compara a versão do site no servidor e recarrega sozinho ----------
-        var VERSAO_SITE = '23/11-G';
+        var VERSAO_SITE = '23/11-H';
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', function () {
                 navigator.serviceWorker.register('service-worker.js').catch(function () {});
