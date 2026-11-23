@@ -243,6 +243,7 @@
             atualizarUsuario();
             pedirChave('');
         }
+        function ehCont() { return !!(estado.usuario && estado.usuario.cont); } // papel "cont": só visualiza Abertas/VIP/Finalizadas, fecha comandas, finaliza o dia e usa Relatórios por completo
         function atualizarUsuario() {
             var el = document.getElementById('info-usuario');
             if (!el) return;
@@ -251,11 +252,19 @@
             if (bl) bl.style.display = (estado.usuario && estado.usuario.supreme) ? '' : 'none';
             if (estado.abaAtiva === 'logs' && !(estado.usuario && estado.usuario.supreme)) { estado.abaAtiva = 'caixa'; try { mudarAba('caixa'); } catch (eL) {} }
             var brl2 = document.getElementById('btn-aba-relatorios');
-            if (brl2) brl2.style.display = (estado.usuario && estado.usuario.admin) ? '' : 'none'; // admin e supreme veem Relatórios
-            if (estado.abaAtiva === 'relatorios' && !(estado.usuario && estado.usuario.admin)) { estado.abaAtiva = 'caixa'; try { mudarAba('caixa'); } catch (eR0) {} }
+            if (brl2) brl2.style.display = (estado.usuario && (estado.usuario.admin || ehCont())) ? '' : 'none'; // admin, supreme e cont veem Relatórios
+            if (estado.abaAtiva === 'relatorios' && !(estado.usuario && (estado.usuario.admin || ehCont()))) { estado.abaAtiva = 'caixa'; try { mudarAba('caixa'); } catch (eR0) {} }
             var bd = document.getElementById('btn-dia');
-            if (bd) bd.style.display = (estado.usuario && !estado.usuario.admin) ? 'none' : ''; // user não vê Finalizar Dia
-            el.textContent = estado.usuario ? ('👤 ' + estado.usuario.nome + (estado.usuario.supreme ? ' (supreme)' : estado.usuario.admin ? ' (admin)' : ' (user)')) : '';
+            if (bd) bd.style.display = (estado.usuario && !estado.usuario.admin && !ehCont()) ? 'none' : ''; // user não vê Finalizar Dia; admin e cont veem
+            // papel "cont": só lança/edita pedido em lugar nenhum, então some com Caixa/Cozinha/Bar e já abre direto em "Abertas"
+            ['btn-aba-caixa', 'btn-aba-cozinha', 'btn-aba-bar'].forEach(function(id) {
+                var b = document.getElementById(id);
+                if (b) b.style.display = ehCont() ? 'none' : '';
+            });
+            if (ehCont() && (estado.abaAtiva === 'caixa' || estado.abaAtiva === 'cozinha' || estado.abaAtiva === 'bar')) {
+                estado.abaAtiva = 'abertas'; try { mudarAba('abertas'); } catch (eC0) {}
+            }
+            el.textContent = estado.usuario ? ('👤 ' + estado.usuario.nome + (estado.usuario.supreme ? ' (supreme)' : estado.usuario.admin ? ' (admin)' : ehCont() ? ' (cont)' : ' (user)')) : '';
             atualizarRotuloVersao();
             rotuloSom();
         }
