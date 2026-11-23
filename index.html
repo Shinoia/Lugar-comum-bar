@@ -883,70 +883,81 @@
             estado.relatorios.semanasAbertas[chave] = !estado.relatorios.semanasAbertas[chave];
             renderizar();
         }
-        function relatoriosCabecalho() {
-            return ['Data', 'Dinheiro', 'PIX', 'Débito', 'Crédito', 'Sem forma', 'TOTAL', 'Comandas', '%', 'Nº pessoas', 'Valor p/ funcionários'];
+        // ---- visual em cards + barrinha de valor por forma de pagamento (igual à disposição usada no Novo Bar) ----
+        function relatoriosKpiHtml(rotulo, valor, sub) {
+            return '<div style="background:#fff; border:2px solid #000; border-radius:0.5rem; padding:0.6rem 0.7rem;">' +
+                '<div style="font-size:0.68rem; font-weight:bold; color:#666; text-transform:uppercase; letter-spacing:0.03em;">' + esc(rotulo) + '</div>' +
+                '<div style="font-size:1.15rem; font-weight:bold; margin-top:0.15rem;">' + valor + '</div>' +
+                (sub ? '<div style="font-size:0.7rem; color:#666; margin-top:0.1rem;">' + sub + '</div>' : '') +
+            '</div>';
         }
-        function relatoriosLinhaHtml(l, destaque) {
+        function relatoriosKpisHtml() {
+            var G = estado.relatorios.geral;
+            if (!G) return '';
+            return '<div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(7.5rem, 1fr)); gap:0.5rem; margin-bottom:0.6rem;">' +
+                relatoriosKpiHtml('Faturamento total', brl(G.total), (G.comandas || 0) + ' comanda(s)') +
+                relatoriosKpiHtml('Dinheiro', brl(G.din)) + relatoriosKpiHtml('PIX', brl(G.pix)) +
+                relatoriosKpiHtml('Débito', brl(G.deb)) + relatoriosKpiHtml('Crédito', brl(G.cre)) +
+            '</div>';
+        }
+        // uma barrinha horizontal por forma de pagamento (label + trilho preenchido + valor), igual a ".barra" do Novo Bar
+        function relatoriosBarrasHtml(l) {
+            var formas = [['Dinheiro', l.din], ['PIX', l.pix], ['Débito', l.deb], ['Crédito', l.cre], ['Sem forma', l.sem]];
+            var max = Math.max.apply(null, formas.map(function(f) { return f[1]; }).concat([0.01]));
+            return formas.filter(function(f) { return f[1] > 0; }).map(function(f) {
+                var pct = Math.max(2, f[1] / max * 100);
+                return '<div style="display:flex; align-items:center; margin:0.3rem 0; font-size:0.78rem;">' +
+                    '<span style="width:4.6rem; flex-shrink:0; font-weight:600;">' + esc(f[0]) + '</span>' +
+                    '<span style="flex:1; height:0.6rem; background:#f3f4f6; border-radius:0.4rem; overflow:hidden; margin:0 0.5rem;"><i style="display:block; height:100%; background:#facc15; border-radius:0.4rem; width:' + pct + '%;"></i></span>' +
+                    '<span style="min-width:4.4rem; text-align:right; font-weight:bold;">' + brl(f[1]) + '</span>' +
+                '</div>';
+            }).join('') || '<div style="font-size:0.78rem; color:#666;">Sem valores neste período.</div>';
+        }
+        // card de um período (dia, semana ou mês): cabeçalho com total + barrinhas por forma + rodapé com % e nº de pessoas
+        function relatoriosCardHtml(l, opts) {
+            opts = opts || {};
             var R = estado.relatorios, chave = l.chave;
-            return '<tr' + (destaque ? ' style="background:#fef3c7; font-weight:bold;"' : '') + '>' +
-                '<td style="padding:0.4rem 0.6rem; border-bottom:1px solid #ddd;">' + esc(l.rotulo) + '</td>' +
-                '<td style="padding:0.4rem 0.6rem; border-bottom:1px solid #ddd; text-align:right;">' + brl(l.din) + '</td>' +
-                '<td style="padding:0.4rem 0.6rem; border-bottom:1px solid #ddd; text-align:right;">' + brl(l.pix) + '</td>' +
-                '<td style="padding:0.4rem 0.6rem; border-bottom:1px solid #ddd; text-align:right;">' + brl(l.deb) + '</td>' +
-                '<td style="padding:0.4rem 0.6rem; border-bottom:1px solid #ddd; text-align:right;">' + brl(l.cre) + '</td>' +
-                '<td style="padding:0.4rem 0.6rem; border-bottom:1px solid #ddd; text-align:right;">' + brl(l.sem) + '</td>' +
-                '<td style="padding:0.4rem 0.6rem; border-bottom:1px solid #ddd; text-align:right; font-weight:bold;">' + brl(l.total) + '</td>' +
-                '<td style="padding:0.4rem 0.6rem; border-bottom:1px solid #ddd; text-align:center;">' + (l.comandas || 0) + '</td>' +
-                '<td style="padding:0.4rem 0.6rem; border-bottom:1px solid #ddd; text-align:center;">' +
-                    '<input type="text" inputmode="decimal" placeholder="10" value="' + esc(R.pct[chave] || '') + '" oninput="relatoriosCampoPct(\'' + chave + '\', this.value)" style="width:3.5rem; text-align:center;">%' +
-                '</td>' +
-                '<td style="padding:0.4rem 0.6rem; border-bottom:1px solid #ddd; text-align:center;">' +
-                    '<input type="text" inputmode="numeric" pattern="[0-9]*" placeholder="pessoas" value="' + esc(R.pessoas[chave] || '') + '" oninput="relatoriosCampoPessoas(\'' + chave + '\', this.value)" style="width:5rem; text-align:center;">' +
-                '</td>' +
-                '<td id="rel-split-' + chave + '" style="padding:0.4rem 0.6rem; border-bottom:1px solid #ddd; font-size:0.8rem; white-space:nowrap;">' + relatoriosSplitTexto(chave, R.pct[chave], R.pessoas[chave]) + '</td>' +
-            '</tr>';
+            return '<div style="background:' + (opts.fundo || '#fff') + '; border:2px solid #000; border-radius:0.5rem; padding:0.7rem 0.8rem; margin-bottom:0.6rem;">' +
+                '<div style="display:flex; justify-content:space-between; align-items:baseline; flex-wrap:wrap; gap:0.4rem; margin-bottom:0.45rem;' + (opts.onclick ? ' cursor:pointer;' : '') + '"' + (opts.onclick ? ' onclick="' + opts.onclick + '"' : '') + '>' +
+                    '<strong style="font-size:0.95rem;">' + (opts.seta || '') + esc(l.rotulo) + '</strong>' +
+                    '<span><strong style="color:#b91c1c; font-size:1.05rem;">' + brl(l.total) + '</strong> <span style="font-size:0.75rem; color:#666;">· ' + (l.comandas || 0) + ' comanda(s)' + (l.aberto ? ' · ' + brl(l.aberto) + ' em aberto' : '') + '</span></span>' +
+                '</div>' +
+                (opts.semBarras ? '' : relatoriosBarrasHtml(l)) +
+                (opts.semSplit ? '' : '<div style="display:flex; align-items:center; flex-wrap:wrap; gap:0.4rem; margin-top:0.5rem; padding-top:0.45rem; border-top:1px dashed #ccc;">' +
+                    '<span style="font-size:0.75rem;">Funcionários:</span>' +
+                    '<input type="text" inputmode="decimal" placeholder="10" value="' + esc(R.pct[chave] || '') + '" oninput="relatoriosCampoPct(\'' + chave + '\', this.value)" style="width:3rem; text-align:center;">%' +
+                    '<input type="text" inputmode="numeric" pattern="[0-9]*" placeholder="nº pessoas" value="' + esc(R.pessoas[chave] || '') + '" oninput="relatoriosCampoPessoas(\'' + chave + '\', this.value)" style="width:5.5rem; text-align:center;">' +
+                    '<span id="rel-split-' + chave + '" style="font-size:0.78rem; font-weight:bold; white-space:nowrap;">' + relatoriosSplitTexto(chave, R.pct[chave], R.pessoas[chave]) + '</span>' +
+                '</div>') +
+            '</div>';
         }
-        function relatoriosTabelaHtml(linhas, linhaGeral) {
-            if (!linhas) linhas = '<tr><td colspan="11" style="padding:1rem; text-align:center;">Nenhum fechamento registrado ainda.</td></tr>';
-            return '<div style="background:#fff; border:2px solid #000; border-radius:0.5rem; color:#000; overflow:auto;">' +
-                '<table style="border-collapse:collapse; width:100%; font-size:0.85rem; text-align:left;"><thead><tr>' +
-                relatoriosCabecalho().map(function(c) { return '<th style="position:sticky; top:0; background:#e5e7eb; padding:0.4rem 0.6rem;">' + esc(c) + '</th>'; }).join('') +
-                '</tr></thead><tbody>' + linhas + (linhaGeral || '') + '</tbody></table></div>';
-        }
-        // ---- Diário: lista plana, um dia fechado por linha ----
+        // ---- Diário: um card por dia fechado, mais novo primeiro ----
         function relatoriosDiarioHtml() {
             var R = estado.relatorios;
-            var linhas = (R.dias || []).map(function(l) { return relatoriosLinhaHtml(l, false); }).join('');
-            return relatoriosTabelaHtml(linhas, R.geral ? relatoriosLinhaHtml(R.geral, true) : '') +
-                '<p style="color:#000; font-size:0.75rem; margin-top:0.5rem;">Um dia fechado por linha (comandas + contas VIP daquele dia). É aqui que dá pra calcular o valor dos funcionários do dia, já que o acerto é diário.</p>';
+            if (!(R.dias || []).length) return '<p style="padding:1rem; text-align:center;">Nenhum fechamento registrado ainda.</p>';
+            return relatoriosKpisHtml() + R.dias.map(function(l) { return relatoriosCardHtml(l); }).join('') +
+                '<p style="color:#000; font-size:0.75rem; margin-top:0.3rem;">Um card por dia fechado (comandas + contas VIP daquele dia). É aqui que dá pra calcular o valor dos funcionários do dia, já que o acerto é diário.</p>';
         }
-        // ---- Semanal: um card por semana (qua a sáb); os dias de dentro ficam minimizados até clicar ----
+        // ---- Semanal: um card por semana (qua a sáb); os dias de dentro ficam minimizados até clicar no card ----
         function relatoriosSemanaCardHtml(s) {
             var R = estado.relatorios, aberta = !!R.semanasAbertas[s.chave];
-            var diasHtml = (s.dias || []).map(function(d) { return relatoriosLinhaHtml(d, false); }).join('');
-            return '<div style="background:#fff; border:2px solid #000; border-radius:0.5rem; color:#000; margin-bottom:0.75rem; overflow:hidden;">' +
-                '<div onclick="relatoriosAlternarSemana(\'' + s.chave + '\')" style="cursor:pointer; background:#fef3c7; padding:0.6rem 0.8rem; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.5rem;">' +
-                    '<strong>' + (aberta ? '▾' : '▸') + ' ' + esc(s.rotulo) + '</strong>' +
-                    '<span>' + brl(s.total) + ' · ' + (s.comandas || 0) + ' comanda(s)</span>' +
-                '</div>' +
-                '<div style="padding:0.6rem 0.8rem;"><table style="border-collapse:collapse; width:100%; font-size:0.85rem;"><tbody>' + relatoriosLinhaHtml(s, true) + '</tbody></table></div>' +
-                (aberta ? '<div style="padding:0 0.8rem 0.6rem; overflow:auto;"><p style="font-size:0.75rem; margin-bottom:0.3rem;">Dias desta semana:</p><table style="border-collapse:collapse; width:100%; font-size:0.8rem; text-align:left;"><thead><tr>' +
-                    relatoriosCabecalho().map(function(c) { return '<th style="background:#f3f4f6; padding:0.3rem 0.5rem;">' + esc(c) + '</th>'; }).join('') +
-                    '</tr></thead><tbody>' + diasHtml + '</tbody></table></div>' : '') +
-            '</div>';
+            var diasHtml = (s.dias || []).map(function(d) { return relatoriosCardHtml(d, { fundo: '#fafafa' }); }).join('');
+            return relatoriosCardHtml(s, { fundo: '#fef3c7', onclick: "relatoriosAlternarSemana('" + s.chave + "')", seta: (aberta ? '▾ ' : '▸ ') }) +
+                (aberta ? '<div style="margin:-0.3rem 0 0.6rem 1rem; padding-left:0.6rem; border-left:3px solid #facc15;">' +
+                    '<p style="font-size:0.72rem; color:#666; margin-bottom:0.3rem;">Dias desta semana:</p>' + diasHtml + '</div>' : '');
         }
         function relatoriosSemanalHtml() {
             var R = estado.relatorios;
             if (!(R.semanas || []).length) return '<p style="padding:1rem; text-align:center;">Nenhum fechamento registrado ainda.</p>';
-            return R.semanas.map(relatoriosSemanaCardHtml).join('') +
-                '<p style="color:#000; font-size:0.75rem; margin-top:0.5rem;">Cada card é uma semana (quarta a sábado, que é quando o bar abre). Clique no card para ver/esconder os dias de dentro dela.</p>';
+            return relatoriosKpisHtml() + R.semanas.map(relatoriosSemanaCardHtml).join('') +
+                '<p style="color:#000; font-size:0.75rem; margin-top:0.3rem;">Cada card é uma semana (quarta a sábado, que é quando o bar abre). Clique no card da semana para ver/esconder os dias de dentro dela.</p>';
         }
-        // ---- Mensal: igual já era, uma linha por mês ----
+        // ---- Mensal: um card por mês ----
         function relatoriosMensalHtml() {
             var R = estado.relatorios;
-            var linhas = (R.meses || []).map(function(l) { return relatoriosLinhaHtml(l, false); }).join('');
-            return relatoriosTabelaHtml(linhas, R.geral ? relatoriosLinhaHtml(R.geral, true) : '') +
-                '<p style="color:#000; font-size:0.75rem; margin-top:0.5rem;">Faturamento por mês (comandas fechadas + contas VIP), somado por forma de pagamento.</p>';
+            if (!(R.meses || []).length) return '<p style="padding:1rem; text-align:center;">Nenhum fechamento registrado ainda.</p>';
+            return relatoriosKpisHtml() + R.meses.map(function(l) { return relatoriosCardHtml(l); }).join('') +
+                '<p style="color:#000; font-size:0.75rem; margin-top:0.3rem;">Faturamento por mês (comandas fechadas + contas VIP), somado por forma de pagamento.</p>';
         }
         function relatoriosPaginaHtml() {
             var R = estado.relatorios;
@@ -1218,7 +1229,7 @@
 
         // ---------- GAME (segredo): em "+ Nova comanda" digite 1337 no número e GAME no nome ----------
         // ---------- atualização automática do aplicativo (iPad): compara a versão do site no servidor e recarrega sozinho ----------
-        var VERSAO_SITE = '23/11-C';
+        var VERSAO_SITE = '23/11-D';
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', function () {
                 navigator.serviceWorker.register('service-worker.js').catch(function () {});
