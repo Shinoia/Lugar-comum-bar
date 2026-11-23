@@ -829,7 +829,7 @@
         // anteriores dela minimizados dentro do card da semana) e Mensal — e, em cada linha,
         // uma caixa de porcentagem (10%, 15%, 20%... o que for digitado) e de nº de pessoas,
         // pra dividir igualmente o valor dos funcionários ----------
-        estado.relatorios = { tipo: 'semanal', dias: null, semanas: null, meses: null, geral: null, erro: '', carregando: false, quando: '', pct: {}, pessoas: {}, semanasAbertas: {} };
+        estado.relatorios = { tipo: 'semanal', dias: null, semanas: null, meses: null, geral: null, erro: '', carregando: false, quando: '', pct: {}, pessoas: {}, semanasAbertas: {}, salvando: {}, salvo: {} };
         var RELATORIOS_TIPOS = [
             { k: 'diario', nome: '📅 Diário' },
             { k: 'semanal', nome: '🗓️ Semanal' },
@@ -854,6 +854,14 @@
                         R.semanas.forEach(function(s) { R.porChave['sem-' + s.chave] = s; });
                         R.meses.forEach(function(m) { R.porChave['mes-' + m.chave] = m; });
                         if (R.geral) R.porChave.geral = R.geral;
+                        // pré-preenche as caixas de % e nº de pessoas de cada dia com o que já estiver SALVO na
+                        // planilha (só na primeira vez que o dia aparece; se o dono já estava digitando algo
+                        // novo sem ter salvado ainda, não mexe pra não apagar o que ele estava escrevendo)
+                        R.dias.forEach(function(d) {
+                            var ke = 'dia-' + d.chave;
+                            if (R.pct[ke] === undefined) R.pct[ke] = d.pctSalvo ? String(d.pctSalvo) : '';
+                            if (R.pessoas[ke] === undefined) R.pessoas[ke] = d.pessoasSalvo ? String(d.pessoasSalvo) : '';
+                        });
                     }
                     else R.erro = (r && r.error) || 'Não foi possível carregar. Confira se o Codigo.gs novo está implantado.';
                     if (estado.abaAtiva === 'relatorios') renderizar();
@@ -918,36 +926,67 @@
                 '</div>';
             }).join('') || '<div style="font-size:0.78rem; color:#666;">Sem valores neste período.</div>';
         }
-        // card de um período (dia, semana ou mês): cabeçalho com total + barrinhas por forma + rodapé com % e nº de pessoas
+        // grava no servidor a % e o nº de pessoas do dia (só existe no Diário); depois de salvar, recarrega
+        // os relatórios — assim o valor já aparece somado nos cards de Semanal e Mensal na hora.
+        function relatoriosSalvarDia(diaChave) {
+            var R = estado.relatorios, ke = 'dia-' + diaChave;
+            var pct = parseFloat(R.pct[ke]);
+            if (!pct || pct <= 0) { alert('Digite uma porcentagem (maior que zero) antes de salvar.'); return; }
+            if (pct > 100) { alert('A porcentagem não pode passar de 100.'); return; }
+            R.salvando[ke] = true; R.salvo[ke] = false;
+            renderizar();
+            fetch(API_URL + '?acao=relatorios_salvar_pct&dia=' + encodeURIComponent(diaChave) + '&pct=' + encodeURIComponent(R.pct[ke]) + '&pessoas=' + encodeURIComponent(R.pessoas[ke] || '0'))
+                .then(function(res) { return res.json(); })
+                .then(function(r) {
+                    R.salvando[ke] = false;
+                    if (r && r.result === 'success') { R.salvo[ke] = true; carregarRelatorios(); }
+                    else { alert('Não foi possível salvar: ' + ((r && r.error) || 'confira se o Codigo.gs novo está implantado.')); renderizar(); }
+                })
+                .catch(function() { R.salvando[ke] = false; alert('Falha de conexão ao salvar.'); renderizar(); });
+        }
+        // card de um período (dia, semana ou mês): cabeçalho com total + barrinhas por forma + rodapé de funcionários.
+        // opts.funcionarios = 'editavel' (só no Diário: caixas de % e nº de pessoas + botão Salvar) ou
+        // 'somado' (Semanal/Mensal: só mostra a soma do que já foi salvo nos dias, sem caixa pra digitar).
         function relatoriosCardHtml(l, opts) {
             opts = opts || {};
             var R = estado.relatorios, chave = opts.chaveEstado || l.chave;
+            var rodape = '';
+            if (opts.funcionarios === 'editavel') {
+                var ke = chave, salvando = !!R.salvando[ke], salvo = !!R.salvo[ke];
+                rodape = '<div style="display:flex; align-items:center; flex-wrap:wrap; gap:0.4rem; margin-top:0.5rem; padding-top:0.45rem; border-top:1px dashed #ccc;">' +
+                    '<span style="font-size:0.75rem;">Funcionários:</span>' +
+                    '<input type="text" inputmode="decimal" placeholder="10" value="' + esc(R.pct[ke] || '') + '" oninput="relatoriosCampoPct(\'' + ke + '\', this.value)" style="width:3rem; text-align:center;">%' +
+                    '<input type="text" inputmode="numeric" pattern="[0-9]*" placeholder="nº pessoas" value="' + esc(R.pessoas[ke] || '') + '" oninput="relatoriosCampoPessoas(\'' + ke + '\', this.value)" style="width:5.5rem; text-align:center;">' +
+                    '<span id="rel-split-' + ke + '" style="font-size:0.78rem; font-weight:bold; white-space:nowrap;">' + relatoriosSplitTexto(ke, R.pct[ke], R.pessoas[ke]) + '</span>' +
+                    '<button type="button" onclick="relatoriosSalvarDia(\'' + l.chave + '\')" style="border:2px solid #000; background:' + (salvo ? '#bbf7d0' : '#facc15') + '; font-size:0.78rem; padding:0.25rem 0.6rem;">' + (salvando ? '⏳ Salvando…' : (salvo ? '✅ Salvo' : '💾 Salvar')) + '</button>' +
+                '</div>';
+            } else if (opts.funcionarios === 'somado') {
+                rodape = '<div style="display:flex; align-items:center; flex-wrap:wrap; gap:0.4rem; margin-top:0.5rem; padding-top:0.45rem; border-top:1px dashed #ccc; font-size:0.78rem;">' +
+                    '<span>💰 Funcionários (soma do que foi salvo em cada dia):</span>' +
+                    '<strong>' + brl(l.valorFuncionarios || 0) + '</strong>' +
+                '</div>';
+            }
             return '<div style="background:' + (opts.fundo || '#fff') + '; border:2px solid #000; border-radius:0.5rem; padding:0.7rem 0.8rem; margin-bottom:0.6rem;">' +
                 '<div style="display:flex; justify-content:space-between; align-items:baseline; flex-wrap:wrap; gap:0.4rem; margin-bottom:0.45rem;' + (opts.onclick ? ' cursor:pointer;' : '') + '"' + (opts.onclick ? ' onclick="' + opts.onclick + '"' : '') + '>' +
                     '<strong style="font-size:0.95rem;">' + (opts.seta || '') + esc(l.rotulo) + '</strong>' +
                     '<span><strong style="color:#b91c1c; font-size:1.05rem;">' + brl(l.total) + '</strong> <span style="font-size:0.75rem; color:#666;">· ' + (l.comandas || 0) + ' comanda(s)' + (l.aberto ? ' · ' + brl(l.aberto) + ' em aberto' : '') + '</span></span>' +
                 '</div>' +
                 (opts.semBarras ? '' : relatoriosBarrasHtml(l)) +
-                (opts.semSplit ? '' : '<div style="display:flex; align-items:center; flex-wrap:wrap; gap:0.4rem; margin-top:0.5rem; padding-top:0.45rem; border-top:1px dashed #ccc;">' +
-                    '<span style="font-size:0.75rem;">Funcionários:</span>' +
-                    '<input type="text" inputmode="decimal" placeholder="10" value="' + esc(R.pct[chave] || '') + '" oninput="relatoriosCampoPct(\'' + chave + '\', this.value)" style="width:3rem; text-align:center;">%' +
-                    '<input type="text" inputmode="numeric" pattern="[0-9]*" placeholder="nº pessoas" value="' + esc(R.pessoas[chave] || '') + '" oninput="relatoriosCampoPessoas(\'' + chave + '\', this.value)" style="width:5.5rem; text-align:center;">' +
-                    '<span id="rel-split-' + chave + '" style="font-size:0.78rem; font-weight:bold; white-space:nowrap;">' + relatoriosSplitTexto(chave, R.pct[chave], R.pessoas[chave]) + '</span>' +
-                '</div>') +
+                rodape +
             '</div>';
         }
         // ---- Diário: um card por dia fechado, mais novo primeiro ----
         function relatoriosDiarioHtml() {
             var R = estado.relatorios;
             if (!(R.dias || []).length) return '<p style="padding:1rem; text-align:center;">Nenhum fechamento registrado ainda.</p>';
-            return relatoriosKpisHtml() + R.dias.map(function(l) { return relatoriosCardHtml(l, { chaveEstado: 'dia-' + l.chave }); }).join('') +
-                '<p style="color:#000; font-size:0.75rem; margin-top:0.3rem;">Um card por dia fechado (comandas + contas VIP daquele dia). É aqui que dá pra calcular o valor dos funcionários do dia, já que o acerto é diário.</p>';
+            return relatoriosKpisHtml() + R.dias.map(function(l) { return relatoriosCardHtml(l, { chaveEstado: 'dia-' + l.chave, funcionarios: 'editavel' }); }).join('') +
+                '<p style="color:#000; font-size:0.75rem; margin-top:0.3rem;">Um card por dia fechado (comandas + contas VIP daquele dia). Digite a % e o nº de pessoas e clique em Salvar — o valor já soma automaticamente na Semana e no Mês desse dia.</p>';
         }
         // ---- Semanal: um card por semana (qua a sáb); os dias de dentro ficam minimizados até clicar no card ----
         function relatoriosSemanaCardHtml(s) {
             var R = estado.relatorios, aberta = !!R.semanasAbertas[s.chave];
-            var diasHtml = (s.dias || []).map(function(d) { return relatoriosCardHtml(d, { fundo: '#fafafa', chaveEstado: 'dia-' + d.chave }); }).join('');
-            return relatoriosCardHtml(s, { fundo: '#fef3c7', onclick: "relatoriosAlternarSemana('" + s.chave + "')", seta: (aberta ? '▾ ' : '▸ '), chaveEstado: 'sem-' + s.chave }) +
+            var diasHtml = (s.dias || []).map(function(d) { return relatoriosCardHtml(d, { fundo: '#fafafa', chaveEstado: 'dia-' + d.chave, funcionarios: 'editavel' }); }).join('');
+            return relatoriosCardHtml(s, { fundo: '#fef3c7', onclick: "relatoriosAlternarSemana('" + s.chave + "')", seta: (aberta ? '▾ ' : '▸ '), chaveEstado: 'sem-' + s.chave, funcionarios: 'somado' }) +
                 (aberta ? '<div style="margin:-0.3rem 0 0.6rem 1rem; padding-left:0.6rem; border-left:3px solid #facc15;">' +
                     '<p style="font-size:0.72rem; color:#666; margin-bottom:0.3rem;">Dias desta semana:</p>' + diasHtml + '</div>' : '');
         }
@@ -955,13 +994,13 @@
             var R = estado.relatorios;
             if (!(R.semanas || []).length) return '<p style="padding:1rem; text-align:center;">Nenhum fechamento registrado ainda.</p>';
             return relatoriosKpisHtml() + R.semanas.map(relatoriosSemanaCardHtml).join('') +
-                '<p style="color:#000; font-size:0.75rem; margin-top:0.3rem;">Cada card é uma semana (quarta a sábado, que é quando o bar abre). Clique no card da semana para ver/esconder os dias de dentro dela.</p>';
+                '<p style="color:#000; font-size:0.75rem; margin-top:0.3rem;">Cada card é uma semana de calendário (domingo a sábado) — vale pra qualquer dia que o bar abrir. Clique no card da semana para ver/esconder os dias de dentro dela.</p>';
         }
         // ---- Mensal: um card por mês ----
         function relatoriosMensalHtml() {
             var R = estado.relatorios;
             if (!(R.meses || []).length) return '<p style="padding:1rem; text-align:center;">Nenhum fechamento registrado ainda.</p>';
-            return relatoriosKpisHtml() + R.meses.map(function(l) { return relatoriosCardHtml(l, { chaveEstado: 'mes-' + l.chave }); }).join('') +
+            return relatoriosKpisHtml() + R.meses.map(function(l) { return relatoriosCardHtml(l, { chaveEstado: 'mes-' + l.chave, funcionarios: 'somado' }); }).join('') +
                 '<p style="color:#000; font-size:0.75rem; margin-top:0.3rem;">Faturamento por mês (comandas fechadas + contas VIP), somado por forma de pagamento.</p>';
         }
         function relatoriosPaginaHtml() {
@@ -1234,7 +1273,7 @@
 
         // ---------- GAME (segredo): em "+ Nova comanda" digite 1337 no número e GAME no nome ----------
         // ---------- atualização automática do aplicativo (iPad): compara a versão do site no servidor e recarrega sozinho ----------
-        var VERSAO_SITE = '23/11-E';
+        var VERSAO_SITE = '23/11-G';
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', function () {
                 navigator.serviceWorker.register('service-worker.js').catch(function () {});
