@@ -66,7 +66,14 @@
         .rel-kpis { display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.5rem; }
         @media(min-width: 768px) { .rel-layout { grid-template-columns: 10rem 1fr; } .rel-kpis { grid-template-columns: 1fr; } .rel-produtos { grid-column: 1 / -1; } }
         @media(min-width: 1150px) { .rel-layout { grid-template-columns: 10rem 1fr 15rem; } .rel-produtos { grid-column: auto; } }
-        
+
+        /* painel principal de Relatórios por período (Hoje/Ontem/7 dias/30 dias/Este mês/Escolher datas): cards pequenos
+           em cima (faturamento, ticket médio etc.), cards maiores embaixo (forma de pagamento, por dia, itens, cancelados). */
+        .rel-periodo-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.6rem; }
+        .rel-periodo-grid2 { display: grid; grid-template-columns: 1fr; gap: 0.6rem; margin-top: 0.6rem; }
+        @media(min-width: 640px) { .rel-periodo-grid { grid-template-columns: repeat(3, 1fr); } }
+        @media(min-width: 900px) { .rel-periodo-grid { grid-template-columns: repeat(4, 1fr); } .rel-periodo-grid2 { grid-template-columns: 1fr 1fr; } }
+
         .kds-card { padding: 1rem; border-radius: 0.75rem; border: 2px solid #991b1b; cursor: pointer; display: flex; flex-direction: column; justify-content: space-between; min-height: 12rem; gap: 0.5rem; background: #f472b6; color: #000; }
         .kds-card.preparando { background: #f97316; }
         .kds-card.pronto { background: #4ade80; }
@@ -783,7 +790,7 @@
             if (aba === 'logs') { if (!(estado.usuario && estado.usuario.supreme)) { aba = estado.abaAtiva = ehCont() ? 'abertas' : 'caixa'; mudarAba(aba); return; } carregarLogs(); }
             var btnRel = document.getElementById('btn-aba-relatorios');
             if (btnRel) btnRel.className = "btn-tab " + (aba === 'relatorios' ? 'active-logs' : '');
-            if (aba === 'relatorios') { if (!(estado.usuario && (estado.usuario.admin || ehCont()))) { aba = estado.abaAtiva = 'caixa'; mudarAba('caixa'); return; } carregarRelatorios(); }
+            if (aba === 'relatorios') { if (!(estado.usuario && (estado.usuario.admin || ehCont()))) { aba = estado.abaAtiva = 'caixa'; mudarAba('caixa'); return; } if (estado.relModoRelatorios === 'funcionarios') carregarRelatorios(); else carregarRelatoriosPeriodo(); }
 
             renderizar();
         }
@@ -858,6 +865,115 @@
             { k: 'mensal', nome: '📆 Mensal' }
         ];
         function relatoriosTipo(k) { estado.relatorios.tipo = k; renderizar(); }
+        // ---- painel principal de Relatórios: período (Hoje/Ontem/7 dias/30 dias/Este mês/Escolher datas) ----
+        estado.relModoRelatorios = 'periodo'; // 'periodo' (painel novo) ou 'funcionarios' (telas antigas de % dos funcionários)
+        estado.relPeriodo = { preset: 'hoje', iniManual: '', fimManual: '', dados: null, erro: '', carregando: false, quando: '' };
+        var PERIODO_PRESETS = [
+            { k: 'hoje', nome: 'Hoje' }, { k: 'ontem', nome: 'Ontem' }, { k: '7dias', nome: '7 dias' },
+            { k: '30dias', nome: '30 dias' }, { k: 'mes', nome: 'Este mês' }, { k: 'custom', nome: 'Escolher datas' }
+        ];
+        function relPeriodoDatas(preset) {
+            var hojeD = new Date(), hoje = relFmtChave(hojeD);
+            if (preset === 'hoje') return { ini: hoje, fim: hoje };
+            if (preset === 'ontem') { var o = new Date(hojeD); o.setDate(o.getDate() - 1); var c = relFmtChave(o); return { ini: c, fim: c }; }
+            if (preset === '7dias') { var d7 = new Date(hojeD); d7.setDate(d7.getDate() - 6); return { ini: relFmtChave(d7), fim: hoje }; }
+            if (preset === '30dias') { var d30 = new Date(hojeD); d30.setDate(d30.getDate() - 29); return { ini: relFmtChave(d30), fim: hoje }; }
+            if (preset === 'mes') { var m1 = new Date(hojeD.getFullYear(), hojeD.getMonth(), 1); return { ini: relFmtChave(m1), fim: hoje }; }
+            // custom: usa o que a pessoa escolheu; se ainda não escolheu nada, cai no dia de hoje
+            var P = estado.relPeriodo;
+            return { ini: P.iniManual || hoje, fim: P.fimManual || hoje };
+        }
+        function relatoriosPeriodoEscolher(k) {
+            estado.relPeriodo.preset = k;
+            if (k !== 'custom') { carregarRelatoriosPeriodo(); } else { renderizar(); }
+        }
+        function relatoriosPeriodoDataManual(campo, v) {
+            estado.relPeriodo[campo] = v;
+            if (estado.relPeriodo.iniManual && estado.relPeriodo.fimManual) carregarRelatoriosPeriodo();
+        }
+        function relatoriosModoFuncionarios() { estado.relModoRelatorios = 'funcionarios'; carregarRelatorios(); }
+        function relatoriosModoPeriodo() { estado.relModoRelatorios = 'periodo'; carregarRelatoriosPeriodo(); }
+        function carregarRelatoriosPeriodo() {
+            var P = estado.relPeriodo;
+            if (P.carregando) return;
+            var datas = relPeriodoDatas(P.preset);
+            P.carregando = true; P.erro = '';
+            renderizar();
+            fetch(API_URL + '?acao=relatorios_periodo&ini=' + encodeURIComponent(datas.ini) + '&fim=' + encodeURIComponent(datas.fim))
+                .then(function(res) { return res.json(); })
+                .then(function(r) {
+                    P.carregando = false;
+                    if (r && r.result === 'success') { P.dados = r; P.quando = agoraBR(); }
+                    else P.erro = (r && r.error) || 'Não foi possível carregar. Confira se o Codigo.gs novo está implantado.';
+                    if (estado.abaAtiva === 'relatorios') renderizar();
+                })
+                .catch(function() { P.carregando = false; P.erro = 'Falha de conexão.'; if (estado.abaAtiva === 'relatorios') renderizar(); });
+        }
+        function relPeriodoRotuloData(chaveYMD) { var p = chaveYMD.split('-'); return p[2] + '/' + p[1]; }
+        function relPeriodoSubtituloHtml(datas) {
+            var ini = relPeriodoRotuloData(datas.ini), fim = relPeriodoRotuloData(datas.fim);
+            return '<p style="font-size:0.78rem; color:#666; margin:-0.2rem 0 0.6rem;">' + (ini === fim ? 'Dia ' + ini : 'De ' + ini + ' até ' + fim) + '</p>';
+        }
+        function relPeriodoProdutosHtml(lista) {
+            if (!(lista || []).length) return '<div style="font-size:0.78rem; color:#666;">Nenhum produto vendido neste período.</div>';
+            var max = Math.max.apply(null, lista.map(function(p) { return p.qtd; }).concat([0.01]));
+            return lista.map(function(p, i) {
+                var pct = Math.max(4, p.qtd / max * 100);
+                return '<div style="margin:0.4rem 0;">' +
+                    '<div style="display:flex; justify-content:space-between; font-size:0.78rem; margin-bottom:0.15rem;"><span><strong>' + (i + 1) + '.</strong> ' + esc(p.nome) + '</span><strong>' + p.qtd + '</strong></div>' +
+                    '<div style="height:0.4rem; background:#f3f4f6; border-radius:0.3rem; overflow:hidden;"><i style="display:block; height:100%; background:#facc15; border-radius:0.3rem; width:' + pct + '%;"></i></div>' +
+                '</div>';
+            }).join('');
+        }
+        function relPeriodoPorDiaHtml(porDia) {
+            if (!(porDia || []).length) return '<div style="font-size:0.78rem; color:#666;">Sem dados no período.</div>';
+            var max = Math.max.apply(null, porDia.map(function(d) { return d.total; }).concat([0.01]));
+            return porDia.map(function(d) {
+                var pct = Math.max(2, d.total / max * 100);
+                return '<div style="display:flex; align-items:center; margin:0.3rem 0;">' +
+                    '<span style="width:3rem; flex-shrink:0; font-size:0.75rem; font-weight:600;">' + esc(d.rotulo) + '</span>' +
+                    '<span style="flex:1; height:0.45rem; background:#f3f4f6; border-radius:0.3rem; overflow:hidden; margin:0 0.5rem;"><i style="display:block; height:100%; background:#facc15; border-radius:0.3rem; width:' + pct + '%;"></i></span>' +
+                    '<span style="min-width:4.4rem; text-align:right; font-weight:bold; font-size:0.8rem;">' + brl(d.total) + '</span>' +
+                '</div>';
+            }).join('');
+        }
+        function relPeriodoCardGrandeHtml(titulo, corpo) {
+            return '<div style="background:#fff; border:2px solid #000; border-radius:0.5rem; padding:0.7rem 0.8rem;">' +
+                '<div style="font-size:0.7rem; font-weight:bold; color:#666; text-transform:uppercase; letter-spacing:0.03em; margin-bottom:0.4rem;">' + esc(titulo) + '</div>' +
+                corpo +
+            '</div>';
+        }
+        function relatoriosPeriodoPaginaHtml() {
+            var P = estado.relPeriodo;
+            var abasPeriodo = PERIODO_PRESETS.map(function(t) {
+                return '<button type="button" onclick="relatoriosPeriodoEscolher(\'' + t.k + '\')" style="border:2px solid #000; background:' + (P.preset === t.k ? '#e9d5ff' : '#fff') + ';">' + esc(t.nome) + '</button>';
+            }).join('');
+            var custom = P.preset === 'custom' ? '<div style="display:flex; gap:0.4rem; align-items:center; flex-wrap:wrap; margin:0.4rem 0;">' +
+                '<label style="font-size:0.75rem;">De</label><input type="date" value="' + esc(P.iniManual) + '" onchange="relatoriosPeriodoDataManual(\'iniManual\', this.value)">' +
+                '<label style="font-size:0.75rem;">até</label><input type="date" value="' + esc(P.fimManual) + '" onchange="relatoriosPeriodoDataManual(\'fimManual\', this.value)">' +
+            '</div>' : '';
+            var barra = '<div style="display:flex; gap:0.4rem; flex-wrap:wrap; margin-bottom:0.2rem; align-items:center;">' + abasPeriodo +
+                '<button type="button" onclick="carregarRelatoriosPeriodo()" style="border:2px solid #000; background:#facc15;">' + (P.carregando ? '⏳ Atualizando…' : '🔄 Atualizar') + '</button>' +
+                '<button type="button" onclick="relatoriosModoFuncionarios()" style="border:2px solid #000; background:#fff; margin-left:auto;">👤 % Funcionários</button>' +
+                (P.quando ? '<span style="font-size:0.75rem; width:100%;">Atualizado às ' + esc(P.quando) + '</span>' : '') + '</div>' + custom;
+            if (P.erro) return barra + '<p style="padding:1rem; font-weight:bold; color:#b91c1c;">' + esc(P.erro) + '</p>';
+            if (!P.dados) return barra + '<p style="padding:1rem;">' + (P.carregando ? 'Carregando…' : 'Sem dados ainda.') + '</p>';
+            var D = P.dados, G = D.geral;
+            var liquido = G.total - (G.valorFuncionarios || 0);
+            var cards = '<div class="rel-periodo-grid">' +
+                relatoriosKpiHtml('Faturamento', brl(G.total), (G.comandas || 0) + ' comanda(s)') +
+                relatoriosKpiHtml('Ticket médio', brl(G.ticketMedio || 0)) +
+                relatoriosKpiHtml('Funcionários', brl(G.valorFuncionarios || 0), 'já salvo nos dias') +
+                relatoriosKpiHtml('Líquido', brl(liquido), 'faturamento − funcionários') +
+            '</div>';
+            var grandes = '<div class="rel-periodo-grid2">' +
+                relPeriodoCardGrandeHtml('Por forma de pagamento', relatoriosBarrasHtml(G) || '<div style="font-size:0.78rem; color:#666;">Sem valores no período.</div>') +
+                relPeriodoCardGrandeHtml('Faturamento por dia', relPeriodoPorDiaHtml(D.porDia)) +
+                relPeriodoCardGrandeHtml('Itens mais vendidos', relPeriodoProdutosHtml(D.produtosTop)) +
+                relPeriodoCardGrandeHtml('Cancelados', '<div style="font-size:1.1rem; font-weight:bold;">' + ((D.cancelados && D.cancelados.qtd) || 0) + '</div><div style="font-size:0.78rem; color:#666;">' + brl((D.cancelados && D.cancelados.valor) || 0) + ' em itens cancelados</div><div style="font-size:0.68rem; color:#999; margin-top:0.3rem;">Conta só a partir de quando esse recurso entrou no ar.</div>') +
+            '</div>';
+            return barra + relPeriodoSubtituloHtml(D) + cards + grandes;
+        }
         function carregarRelatorios() {
             var R = estado.relatorios;
             if (R.carregando) return;
@@ -1076,23 +1192,24 @@
             return R.meses.map(function(l) { return relatoriosCardHtml(l, { chaveEstado: 'mes-' + l.chave, funcionarios: 'somado' }); }).join('') +
                 '<p style="color:#000; font-size:0.75rem; margin-top:0.3rem;">Faturamento por mês (comandas fechadas + contas VIP), somado por forma de pagamento.</p>';
         }
-        function relatoriosPaginaHtml() {
+        function relatoriosFuncionariosPaginaHtml() {
             var R = estado.relatorios;
-            var titulo = '<h2 style="color:#000; margin-bottom:0.5rem;">📊 Relatórios</h2>';
+            var voltar = '<button type="button" onclick="relatoriosModoPeriodo()" style="border:2px solid #000; background:#fff;">← Voltar pra Relatórios</button>';
             var abas = RELATORIOS_TIPOS.map(function(t) {
                 return '<button type="button" onclick="relatoriosTipo(\'' + t.k + '\')" style="border:2px solid #000; background:' + (R.tipo === t.k ? '#e9d5ff' : '#fff') + ';">' + t.nome + '</button>';
             }).join('');
-            var barra = '<div style="display:flex; gap:0.4rem; flex-wrap:wrap; margin-bottom:0.6rem; align-items:center;">' + abas +
+            var barra = '<div style="display:flex; gap:0.4rem; flex-wrap:wrap; margin-bottom:0.6rem; align-items:center;">' + voltar + abas +
                 '<button type="button" onclick="carregarRelatorios()" style="border:2px solid #000; background:#facc15;">' + (R.carregando ? '⏳ Atualizando…' : '🔄 Atualizar') + '</button>' +
                 (R.quando ? '<span style="font-size:0.75rem;">Atualizado às ' + esc(R.quando) + '</span>' : '') + '</div>';
-            if (R.erro) return '<div>' + titulo + barra + '<p style="padding:1rem; font-weight:bold; color:#b91c1c;">' + esc(R.erro) + '</p></div>';
-            if (!R.dias) return '<div>' + titulo + barra + '<p style="padding:1rem;">' + (R.carregando ? 'Carregando…' : 'Sem dados ainda.') + '</p></div>';
+            if (R.erro) return barra + '<p style="padding:1rem; font-weight:bold; color:#b91c1c;">' + esc(R.erro) + '</p>';
+            if (!R.dias) return barra + '<p style="padding:1rem;">' + (R.carregando ? 'Carregando…' : 'Sem dados ainda.') + '</p>';
             var corpo = R.tipo === 'diario' ? relatoriosDiarioHtml() : R.tipo === 'semanal' ? relatoriosSemanalHtml() : relatoriosMensalHtml();
-            return '<div>' + titulo + barra + '<div class="rel-layout">' +
-                relatoriosKpisHtml() +
-                '<div>' + corpo + '</div>' +
-                '<div class="rel-produtos"><h3 style="font-size:0.9rem; margin-bottom:0.4rem;">🏆 Produtos mais vendidos</h3>' + relatoriosProdutosHtml() + '</div>' +
-            '</div></div>';
+            return barra + corpo;
+        }
+        function relatoriosPaginaHtml() {
+            var titulo = '<h2 style="color:#000; margin-bottom:0.5rem;">📊 Relatórios</h2>';
+            var corpo = estado.relModoRelatorios === 'funcionarios' ? relatoriosFuncionariosPaginaHtml() : relatoriosPeriodoPaginaHtml();
+            return '<div>' + titulo + corpo + '</div>';
         }
 
 
@@ -1350,7 +1467,7 @@
 
         // ---------- GAME (segredo): em "+ Nova comanda" digite 1337 no número e GAME no nome ----------
         // ---------- atualização automática do aplicativo (iPad): compara a versão do site no servidor e recarrega sozinho ----------
-        var VERSAO_SITE = '23/11-K';
+        var VERSAO_SITE = '23/11-L';
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', function () {
                 navigator.serviceWorker.register('service-worker.js').catch(function () {});
